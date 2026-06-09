@@ -1,0 +1,149 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  name         String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  
+  workspaces        WorkspaceMember[]
+  refreshTokens     RefreshToken[]
+  createdWorkspaces Workspace[]       @relation("WorkspaceCreator")
+  workflows         Workflow[]        @relation("WorkflowCreator")
+  workflowExecutions WorkflowExecution[] @relation("ExecutionStarter")
+}
+
+model RefreshToken {
+  id          String   @id @default(uuid())
+  hashedToken String   @unique
+  userId      String
+  revoked     Boolean  @default(false)
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Workspace {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  createdBy User              @relation("WorkspaceCreator", fields: [createdById], references: [id])
+  members   WorkspaceMember[]
+  workflows Workflow[]
+}
+
+model WorkspaceMember {
+  id          String   @id @default(uuid())
+  userId      String
+  workspaceId String
+  role        String   @default("MEMBER")
+  createdAt   DateTime @default(now())
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, workspaceId])
+}
+
+enum WorkflowStatus {
+  DRAFT
+  ACTIVE
+}
+
+model Workflow {
+  id          String         @id @default(uuid())
+  name        String
+  description String?
+  workspaceId String
+  createdById String
+  status      WorkflowStatus @default(DRAFT)
+  version     Int            @default(1)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy User      @relation("WorkflowCreator", fields: [createdById], references: [id])
+  nodes     Node[]
+  edges     Edge[]
+  executions WorkflowExecution[]
+}
+
+model Node {
+  id          String   @id @default(uuid())
+  workflowId  String
+  type        String
+  label       String
+  positionX   Float    @default(100)
+  positionY   Float    @default(100)
+  config      Json     @default("{}")
+  createdAt   DateTime @default(now())
+
+  workflow      Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  sourceEdges   Edge[]   @relation("EdgeSourceNode")
+  targetEdges   Edge[]   @relation("EdgeTargetNode")
+  executions    NodeExecution[]
+}
+
+model Edge {
+  id           String   @id @default(uuid())
+  workflowId   String
+  sourceNodeId String
+  targetNodeId String
+  condition    String?
+  createdAt    DateTime @default(now())
+
+  workflow   Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  sourceNode Node     @relation("EdgeSourceNode", fields: [sourceNodeId], references: [id], onDelete: Cascade)
+  targetNode Node     @relation("EdgeTargetNode", fields: [targetNodeId], references: [id], onDelete: Cascade)
+}
+
+enum ExecutionStatus {
+  PENDING
+  RUNNING
+  SUCCESS
+  FAILED
+}
+
+model WorkflowExecution {
+  id          String          @id @default(uuid())
+  workflowId  String
+  startedById String
+  status      ExecutionStatus @default(PENDING)
+  startedAt   DateTime        @default(now())
+  completedAt DateTime?
+  durationMs  Int?
+  createdAt   DateTime        @default(now())
+
+  workflow    Workflow        @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  startedBy   User            @relation("ExecutionStarter", fields: [startedById], references: [id])
+  nodeExecutions NodeExecution[]
+}
+
+model NodeExecution {
+  id                  String          @id @default(uuid())
+  workflowExecutionId String
+  nodeId              String
+  status              ExecutionStatus @default(PENDING)
+  input               Json?
+  output              Json?
+  error               String?
+  startedAt           DateTime        @default(now())
+  completedAt         DateTime?
+
+  workflowExecution   WorkflowExecution @relation(fields: [workflowExecutionId], references: [id], onDelete: Cascade)
+  node                Node              @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+}
