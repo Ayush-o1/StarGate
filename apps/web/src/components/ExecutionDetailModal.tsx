@@ -80,6 +80,22 @@ export const ExecutionDetailModal: React.FC<ExecutionDetailModalProps> = ({ exec
                   <span>{execution.durationMs}ms</span>
                 </>
               )}
+              {execution.retryCount > 1 && (
+                <>
+                  <span>•</span>
+                  <span className="bg-yellow-500/20 text-yellow-400 px-2 py-0.5 rounded text-xs font-bold">
+                    Attempt {execution.retryCount}
+                  </span>
+                </>
+              )}
+              {execution.durationMs !== null && execution.durationMs > 5000 && (
+                <>
+                  <span>•</span>
+                  <span className="bg-red-500/20 text-red-400 px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wider">
+                    Slow Execution
+                  </span>
+                </>
+              )}
             </div>
           </div>
           <button 
@@ -117,9 +133,23 @@ export const ExecutionDetailModal: React.FC<ExecutionDetailModalProps> = ({ exec
                       )}
                       <span className="font-medium text-white">Node: {node.nodeId}</span>
                     </div>
-                    <span className="text-xs font-medium px-2 py-1 rounded-md bg-gray-800 text-gray-300">
-                      {node.status}
-                    </span>
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs font-medium px-2 py-1 rounded-md bg-gray-800 text-gray-300">
+                        {node.status}
+                      </span>
+                      {node.durationMs !== null && (
+                        <span className="text-xs text-gray-500 flex items-center gap-1">
+                          <Clock className="w-3 h-3" /> {node.durationMs}ms
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  
+                  <div className="px-4 py-2 bg-gray-900/30 border-b border-gray-800/50 flex flex-wrap gap-4 text-xs text-gray-500">
+                    <div><span className="font-medium text-gray-400">Started:</span> {new Date(node.startedAt).toLocaleString()}</div>
+                    {node.completedAt && (
+                      <div><span className="font-medium text-gray-400">Completed:</span> {new Date(node.completedAt).toLocaleString()}</div>
+                    )}
                   </div>
                   
                   {!!node.output && renderOutput(node.output)}

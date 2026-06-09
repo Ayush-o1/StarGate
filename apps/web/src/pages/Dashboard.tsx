@@ -8,6 +8,7 @@ import { useWorkspaceStore } from '../store/workspaceStore';
 import { useWorkflowStore } from '../store/workflowStore';
 import { CreateWorkspaceModal } from '../components/CreateWorkspaceModal';
 import { CreateWorkflowModal } from '../components/CreateWorkflowModal';
+import { SystemMetrics } from '../components/SystemMetrics';
 
 export const Dashboard: React.FC = () => {
   const { user, clearAuth, updateUser } = useAuthStore();
@@ -103,7 +104,9 @@ export const Dashboard: React.FC = () => {
           <h1 className="text-3xl font-bold mb-2">Welcome back!</h1>
           <p className="text-gray-400 mb-8">Phase 3 Workspaces are successfully active.</p>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <SystemMetrics />
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-8">
             <div className="bg-gray-950 border border-gray-800 rounded-xl p-6">
               <h3 className="text-sm font-medium text-gray-400 uppercase tracking-wider mb-4">Your Profile</h3>
               <div className="space-y-3">

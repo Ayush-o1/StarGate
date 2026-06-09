@@ -24,9 +24,11 @@ import { ExecutionDetailModal } from '../components/ExecutionDetailModal';
 import { CustomNode } from '../components/CustomNode';
 import { TriggerModal } from '../components/TriggerModal';
 import { NodeConfigModal } from '../components/NodeConfigModal';
+import { EdgeConfigModal } from '../components/EdgeConfigModal';
 
 const nodeTypes = {
-  custom: CustomNode,
+  HTTP: CustomNode,
+  IF: CustomNode,
 };
 
 export const WorkflowDetail: React.FC = () => {
@@ -49,6 +51,7 @@ export const WorkflowDetail: React.FC = () => {
   const [selectedExecution, setSelectedExecution] = useState<WorkflowExecutionProfile | null>(null);
   const [isTriggerModalOpen, setIsTriggerModalOpen] = useState(false);
   const [configModalNodeId, setConfigModalNodeId] = useState<string | null>(null);
+  const [configModalEdgeId, setConfigModalEdgeId] = useState<string | null>(null);
 
   const [rfNodes, setRfNodes, onNodesChange] = useNodesState([]);
   const [rfEdges, setRfEdges, onEdgesChange] = useEdgesState([]);
@@ -86,13 +89,13 @@ export const WorkflowDetail: React.FC = () => {
   useEffect(() => {
     const formattedNodes: ReactFlowNode[] = storeNodes.map((n) => ({
       id: n.id,
-      type: 'custom',
+      type: n.type as any,
       position: { x: n.positionX, y: n.positionY },
       data: { 
+        type: n.type,
         label: n.label, 
-        type: n.type, 
-        workflowId: n.workflowId,
-        onConfigure: (nodeId: string) => setConfigModalNodeId(nodeId)
+        workflowId: id,
+        onConfigure: (nodeId: string) => setConfigModalNodeId(nodeId),
       },
     }));
     setRfNodes(formattedNodes);
@@ -103,6 +106,10 @@ export const WorkflowDetail: React.FC = () => {
       target: e.targetNodeId,
       type: 'smoothstep',
       animated: true,
+      label: e.condition || '',
+      labelStyle: { fill: '#a5b4fc', fontWeight: 700, fontSize: 12 },
+      labelBgStyle: { fill: '#1f2937', fillOpacity: 0.8 },
+      style: { stroke: '#4f46e5', strokeWidth: 2 },
     }));
     setRfEdges(formattedEdges);
   }, [storeNodes, storeEdges, setRfNodes, setRfEdges]);
@@ -168,13 +175,20 @@ export const WorkflowDetail: React.FC = () => {
     [id, fetchWorkflowGraph]
   );
 
-  const handleAddMockNode = async () => {
+  const onEdgeClick = useCallback(
+    (_event: React.MouseEvent, edge: Edge) => {
+      setConfigModalEdgeId(edge.id);
+    },
+    []
+  );
+
+  const handleAddNode = async (type: 'HTTP' | 'IF') => {
     try {
       await apiFetch(`/nodes/workflow/${id}`, {
         method: 'POST',
         body: JSON.stringify({
-          type: 'HTTP',
-          label: `HTTP Request ${storeNodes.length + 1}`,
+          type: type,
+          label: `${type} Node ${storeNodes.length + 1}`,
           positionX: 100,
           positionY: 100,
         }),
@@ -283,6 +297,7 @@ export const WorkflowDetail: React.FC = () => {
             onConnect={onConnect}
             onEdgesDelete={onEdgesDelete}
             onNodesDelete={onNodesDelete}
+            onEdgeClick={onEdgeClick}
             nodeTypes={nodeTypes}
             fitView
             className="bg-gray-950"
@@ -300,12 +315,18 @@ export const WorkflowDetail: React.FC = () => {
             />
           </ReactFlow>
 
-          <div className="absolute top-4 left-4 z-10">
+          <div className="absolute top-4 left-4 z-10 flex gap-2">
             <button
-              onClick={handleAddMockNode}
+              onClick={() => handleAddNode('HTTP')}
               className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium shadow-lg transition-colors flex items-center gap-2"
             >
-              + Add Node
+              + Add HTTP
+            </button>
+            <button
+              onClick={() => handleAddNode('IF')}
+              className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg text-sm font-medium shadow-lg transition-colors flex items-center gap-2"
+            >
+              + Add IF
             </button>
           </div>
         </div>
@@ -362,6 +383,16 @@ export const WorkflowDetail: React.FC = () => {
                             </span>
                           </div>
                           <div className="flex items-center gap-6 text-sm text-gray-500">
+                            {exec.retryCount > 1 && (
+                              <span className="bg-yellow-500/20 text-yellow-400 px-2 py-0.5 rounded text-xs font-bold">
+                                Attempt {exec.retryCount}
+                              </span>
+                            )}
+                            {exec.durationMs !== null && exec.durationMs > 5000 && (
+                              <span className="bg-red-500/20 text-red-400 px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wider">
+                                Slow
+                              </span>
+                            )}
                             {exec.durationMs !== null && <span>{exec.durationMs}ms</span>}
                             <span>{new Date(exec.startedAt).toLocaleString()}</span>
                           </div>
@@ -486,6 +517,19 @@ export const WorkflowDetail: React.FC = () => {
           await apiFetch(`/nodes/${nodeId}`, {
             method: 'PUT',
             body: JSON.stringify({ config }),
+          });
+          if (id) await fetchWorkflowGraph(id);
+        }}
+      />
+
+      <EdgeConfigModal
+        edge={rfEdges.find((e) => e.id === configModalEdgeId) || null}
+        isOpen={!!configModalEdgeId}
+        onClose={() => setConfigModalEdgeId(null)}
+        onSave={async (edgeId, condition) => {
+          await apiFetch(`/edges/${edgeId}`, {
+            method: 'PATCH',
+            body: JSON.stringify({ condition }),
           });
           if (id) await fetchWorkflowGraph(id);
         }}

@@ -169,3 +169,43 @@ export const deleteWorkflow = async (
     next(error);
   }
 };
+
+export const getWorkflowGraph = async (
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const userId = req.user!.userId;
+    const { id } = req.params;
+
+    const workflow = await prisma.workflow.findUnique({
+      where: { id },
+      include: {
+        nodes: true,
+        edges: true,
+      },
+    });
+
+    if (!workflow) {
+      res.status(404).json({ message: 'Workflow not found' });
+      return;
+    }
+
+    const membership = await prisma.workspaceMember.findUnique({
+      where: { userId_workspaceId: { userId, workspaceId: workflow.workspaceId } },
+    });
+
+    if (!membership) {
+      res.status(403).json({ message: 'Forbidden' });
+      return;
+    }
+
+    res.json({
+      nodes: workflow.nodes,
+      edges: workflow.edges,
+    });
+  } catch (error) {
+    next(error);
+  }
+};

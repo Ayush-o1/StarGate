@@ -119,6 +119,7 @@ enum ExecutionStatus {
   RUNNING
   SUCCESS
   FAILED
+  SKIPPED
 }
 
 model WorkflowExecution {
@@ -130,6 +131,7 @@ model WorkflowExecution {
   startedAt   DateTime        @default(now())
   completedAt DateTime?
   durationMs  Int?
+  retryCount  Int             @default(0)
   createdAt   DateTime        @default(now())
 
   workflow    Workflow        @relation(fields: [workflowId], references: [id], onDelete: Cascade)
@@ -147,6 +149,7 @@ model NodeExecution {
   error               String?
   startedAt           DateTime        @default(now())
   completedAt         DateTime?
+  durationMs          Int?
 
   workflowExecution   WorkflowExecution @relation(fields: [workflowExecutionId], references: [id], onDelete: Cascade)
   node                Node              @relation(fields: [nodeId], references: [id], onDelete: Cascade)

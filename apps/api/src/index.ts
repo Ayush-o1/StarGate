@@ -13,6 +13,7 @@ import { workflowsRouter } from './routes/workflows';
 import { workflowExecutionRouter, executionDetailRouter } from './modules/executions/executions.routes';
 import { workflowTriggersRouter, triggersRouter } from './modules/triggers/triggers.routes';
 import { webhooksRouter } from './modules/triggers/webhooks.routes';
+import { systemRouter } from './modules/system/system.routes';
 import { schedulerService } from './modules/triggers/scheduler.service';
 import { errorHandler } from './middleware/errorHandler';
 
@@ -39,6 +40,7 @@ app.use('/api/v1/executions', executionDetailRouter);
 app.use('/api/v1/workflows/:workflowId/triggers', workflowTriggersRouter);
 app.use('/api/v1/triggers', triggersRouter);
 app.use('/api/v1/webhooks', webhooksRouter);
+app.use('/api/v1/system', systemRouter);
 
 // Global Error Handler
 app.use(errorHandler);

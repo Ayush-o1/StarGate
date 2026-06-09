@@ -6,6 +6,7 @@ import {
   getWorkflow,
   updateWorkflow,
   deleteWorkflow,
+  getWorkflowGraph,
 } from '../controllers/workflows.controller';
 
 const router = Router();
@@ -18,6 +19,7 @@ router.get('/workspace/:workspaceId', listWorkflows);
 
 // Direct workflow routes
 router.get('/:id', getWorkflow);
+router.get('/:id/graph', getWorkflowGraph);
 router.put('/:id', updateWorkflow);
 router.delete('/:id', deleteWorkflow);
 

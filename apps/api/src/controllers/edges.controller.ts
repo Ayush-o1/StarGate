@@ -121,3 +121,42 @@ export const deleteEdge = async (
     next(error);
   }
 };
+
+export const updateEdge = async (
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const userId = req.user!.userId;
+    const { id } = req.params;
+    const { condition } = req.body;
+
+    const edge = await prisma.edge.findUnique({
+      where: { id },
+      include: { workflow: true },
+    });
+    if (!edge) {
+      res.status(404).json({ message: 'Edge not found' });
+      return;
+    }
+
+    const membership = await prisma.workspaceMember.findUnique({
+      where: { userId_workspaceId: { userId, workspaceId: edge.workflow.workspaceId } },
+    });
+
+    if (!membership) {
+      res.status(403).json({ message: 'Forbidden' });
+      return;
+    }
+
+    const updated = await prisma.edge.update({
+      where: { id },
+      data: { condition },
+    });
+
+    res.json(updated);
+  } catch (error) {
+    next(error);
+  }
+};

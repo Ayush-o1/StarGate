@@ -1,9 +1,10 @@
 import { z } from 'zod';
 
 export interface HealthResponse {
-  status: string;
-  timestamp: string;
-  database: 'connected' | 'disconnected';
+  api: 'healthy' | 'unhealthy';
+  worker: 'healthy' | 'unhealthy';
+  redis: 'healthy' | 'unhealthy';
+  database: 'healthy' | 'unhealthy';
 }
 
 export const API_VERSION = 'v1';
@@ -170,6 +171,7 @@ export interface WorkflowExecutionProfile {
   startedAt: string;
   completedAt: string | null;
   durationMs: number | null;
+  retryCount: number;
   createdAt: string;
 }
 
@@ -183,6 +185,7 @@ export interface NodeExecutionProfile {
   error: string | null;
   startedAt: string;
   completedAt: string | null;
+  durationMs: number | null;
 }
 
 // Trigger Enums & Interfaces

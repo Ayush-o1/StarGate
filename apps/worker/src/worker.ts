@@ -22,10 +22,10 @@ export const initWorker = () => {
       const { workflowId, executionId, triggerExecutionId } = job.data;
       console.log(`[Worker] Processing execution ${executionId} for workflow ${workflowId}`);
 
-      // 1. Mark workflow as RUNNING
+      // 1. Mark workflow as RUNNING and update retryCount
       await prisma.workflowExecution.update({
         where: { id: executionId },
-        data: { status: 'RUNNING' },
+        data: { status: 'RUNNING', retryCount: job.attemptsMade },
       });
 
       // Fetch the workflow nodes and edges
