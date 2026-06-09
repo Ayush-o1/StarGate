@@ -23,6 +23,7 @@ import { useAuthStore } from '../store/authStore';
 import { ExecutionDetailModal } from '../components/ExecutionDetailModal';
 import { CustomNode } from '../components/CustomNode';
 import { TriggerModal } from '../components/TriggerModal';
+import { NodeConfigModal } from '../components/NodeConfigModal';
 
 const nodeTypes = {
   custom: CustomNode,
@@ -47,6 +48,7 @@ export const WorkflowDetail: React.FC = () => {
 
   const [selectedExecution, setSelectedExecution] = useState<WorkflowExecutionProfile | null>(null);
   const [isTriggerModalOpen, setIsTriggerModalOpen] = useState(false);
+  const [configModalNodeId, setConfigModalNodeId] = useState<string | null>(null);
 
   const [rfNodes, setRfNodes, onNodesChange] = useNodesState([]);
   const [rfEdges, setRfEdges, onEdgesChange] = useEdgesState([]);
@@ -86,7 +88,12 @@ export const WorkflowDetail: React.FC = () => {
       id: n.id,
       type: 'custom',
       position: { x: n.positionX, y: n.positionY },
-      data: { label: n.label, type: n.type, workflowId: n.workflowId },
+      data: { 
+        label: n.label, 
+        type: n.type, 
+        workflowId: n.workflowId,
+        onConfigure: (nodeId: string) => setConfigModalNodeId(nodeId)
+      },
     }));
     setRfNodes(formattedNodes);
 
@@ -468,6 +475,19 @@ export const WorkflowDetail: React.FC = () => {
           if (id && token) {
             await createTrigger(id, data, token);
           }
+        }}
+      />
+
+      <NodeConfigModal
+        node={storeNodes.find((n) => n.id === configModalNodeId) || null}
+        isOpen={!!configModalNodeId}
+        onClose={() => setConfigModalNodeId(null)}
+        onSave={async (nodeId, config) => {
+          await apiFetch(`/nodes/${nodeId}`, {
+            method: 'PUT',
+            body: JSON.stringify({ config }),
+          });
+          if (id) await fetchWorkflowGraph(id);
         }}
       />
     </div>

@@ -28,16 +28,86 @@ export const runWorkflowNodes = async (
     });
 
     try {
-      // 3. Mock Execution (Wait 500ms, Return JSON)
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      const config = (node.config as any) || {};
+      const method = config.method || 'GET';
+      const url = config.url;
+      const headers = config.headers || {};
+      const body = config.body;
+      const timeoutMs = config.timeout || 30000;
 
-      // Simulate generic error randomly for retries testing? No, keep it deterministic unless needed.
-      const output = {
-        status: 200,
-        message: 'Mock HTTP Success',
-        nodeId: node.id,
-        nodeType: node.type,
+      if (!url) {
+        throw new Error('Node configuration is missing URL');
+      }
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+      const fetchOptions: RequestInit = {
+        method,
+        headers,
+        signal: controller.signal,
       };
+
+      if (body && ['POST', 'PUT', 'PATCH'].includes(method)) {
+        fetchOptions.body = typeof body === 'string' ? body : JSON.stringify(body);
+        if (!fetchOptions.headers || !Object.keys(fetchOptions.headers).some(k => k.toLowerCase() === 'content-type')) {
+          fetchOptions.headers = { ...fetchOptions.headers, 'Content-Type': 'application/json' };
+        }
+      }
+
+      const startTime = performance.now();
+      
+      let response: Response;
+      try {
+        response = await fetch(url, fetchOptions);
+      } catch (err: any) {
+        clearTimeout(timeoutId);
+        if (err.name === 'AbortError') {
+          throw new Error(`Request timed out after ${timeoutMs}ms`);
+        }
+        throw new Error(`Network error: ${err.message}`);
+      }
+
+      clearTimeout(timeoutId);
+      const durationMs = Math.round(performance.now() - startTime);
+
+      let responseBody;
+      const text = await response.text();
+      try {
+        responseBody = JSON.parse(text);
+      } catch (e) {
+        responseBody = text;
+      }
+
+      const responseHeaders: Record<string, string> = {};
+      response.headers.forEach((value, key) => {
+        responseHeaders[key] = value;
+      });
+
+      const output = {
+        url,
+        method,
+        status: response.status,
+        statusText: response.statusText,
+        headers: responseHeaders,
+        body: responseBody,
+        durationMs,
+      };
+
+      if (!response.ok) {
+        hasFailure = true;
+        finalErrorMessage = `HTTP Error ${response.status}: ${response.statusText}`;
+        await prisma.nodeExecution.update({
+          where: { id: nodeExecution.id },
+          data: {
+            status: 'FAILED',
+            error: finalErrorMessage,
+            output,
+            completedAt: new Date(),
+          },
+        });
+        break; // Stop executing sequentially on failure
+      }
 
       // 4. Mark as SUCCESS
       await prisma.nodeExecution.update({

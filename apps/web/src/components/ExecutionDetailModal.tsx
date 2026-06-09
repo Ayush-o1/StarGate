@@ -26,6 +26,43 @@ export const ExecutionDetailModal: React.FC<ExecutionDetailModalProps> = ({ exec
     fetchNodes();
   }, [execution.id]);
 
+  const renderOutput = (output: any) => {
+    if (!output) return null;
+    
+    if (output.url && output.method) {
+      return (
+        <div className="p-4 space-y-3">
+          <div className="flex items-center gap-3 text-sm flex-wrap">
+            <span className="font-bold text-gray-300 bg-gray-800 px-2 py-1 rounded">{output.method}</span>
+            <span className="text-gray-400 font-mono break-all">{output.url}</span>
+            {output.status && (
+              <span className={`px-2 py-1 rounded font-bold text-xs ${output.status >= 200 && output.status < 300 ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
+                {output.status} {output.statusText}
+              </span>
+            )}
+            {output.durationMs && <span className="text-gray-500 text-xs bg-gray-800/50 px-2 py-1 rounded">{output.durationMs}ms</span>}
+          </div>
+          
+          <div className="mt-4">
+            <p className="text-xs text-gray-500 mb-2 font-medium uppercase tracking-wider">Response Body</p>
+            <pre className="bg-black/50 p-3 rounded-lg text-sm font-mono text-gray-300 overflow-x-auto max-h-64 overflow-y-auto">
+              {typeof output.body === 'object' ? JSON.stringify(output.body, null, 2) : (output.body || JSON.stringify(output, null, 2))}
+            </pre>
+          </div>
+        </div>
+      );
+    }
+    
+    return (
+      <div className="p-4">
+        <p className="text-xs text-gray-500 mb-2 font-medium uppercase tracking-wider">Output</p>
+        <pre className="bg-black/50 p-3 rounded-lg text-sm font-mono text-gray-300 overflow-x-auto max-h-64 overflow-y-auto">
+          {JSON.stringify(output, null, 2)}
+        </pre>
+      </div>
+    );
+  };
+
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-gray-900 border border-gray-800 rounded-xl w-full max-w-3xl max-h-[85vh] overflow-hidden flex flex-col shadow-2xl">
@@ -85,14 +122,7 @@ export const ExecutionDetailModal: React.FC<ExecutionDetailModalProps> = ({ exec
                     </span>
                   </div>
                   
-                  {!!node.output && (
-                    <div className="p-4">
-                      <p className="text-xs text-gray-500 mb-2 font-medium uppercase tracking-wider">Output</p>
-                      <pre className="bg-black/50 p-3 rounded-lg text-sm font-mono text-gray-300 overflow-x-auto">
-                        {JSON.stringify(node.output, null, 2)}
-                      </pre>
-                    </div>
-                  )}
+                  {!!node.output && renderOutput(node.output)}
 
                   {!!node.error && (
                     <div className="p-4 bg-red-500/5 border-t border-red-500/10">

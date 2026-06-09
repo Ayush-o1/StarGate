@@ -34,6 +34,7 @@ StarGate addresses these problems through a visual workflow orchestration platfo
 - **Execution Tracking**: Monitor every single execution step (Queued, Running, Success, Failed) live through network polling.
 - **Granular Details**: Inspect inputs, outputs, timestamps, and error traces for individual node operations.
 - **Persistence**: ACID-compliant PostgreSQL backing for reliable persistence of nodes, edges, triggers, and execution histories.
+- **Real HTTP Execution Engine**: Execute real outbound GET/POST/PUT/PATCH/DELETE network requests with custom headers, JSON bodies, and configurable execution timeouts natively powered by the background worker.
 
 ---
 
@@ -139,6 +140,12 @@ An independent `stargate-worker-1` container listens to the queue, consumes jobs
 ### Execution Details
 ![Execution Details](docs/screenshots/execution-details.png)
 
+### HTTP Node Configuration
+![HTTP Node Configuration](docs/screenshots/http-node-configuration.png)
+
+### Real Execution Details
+![Real Execution Details](docs/screenshots/real-execution-details.png)
+
 ---
 
 ## Local Setup
@@ -188,7 +195,5 @@ stargate/
 
 - **Conditional Branching**: If/Else logic routing workflows dynamically based on node output.
 - **Retry Policies**: Configurable exponential backoff on intermittent HTTP node failures.
-- **Node Configuration Panels**: Dynamic property editing for custom node arguments.
-- **Real HTTP Execution**: Node logic that invokes active external network requests instead of mock success.
 - **Role-Based Permissions**: Granular Viewer/Editor abstractions inside workspaces.
 - **Workflow Versioning**: Immutable workflow snapshots preventing disruption of active executions.
