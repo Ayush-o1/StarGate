@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, PlayCircle, Loader2, Copy } from 'lucide-react';
+import { ArrowLeft, PlayCircle, Loader2, Copy, Download } from 'lucide-react';
 import ReactFlow, {
   MiniMap,
   Controls,
@@ -199,6 +199,25 @@ export const WorkflowDetail: React.FC = () => {
     }
   };
 
+  const handleExport = async () => {
+    if (!workflow) return;
+    try {
+      const data = await apiFetch(`/workflows/${id}/export`);
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${workflow.name || 'workflow'}_export.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error(e);
+      alert('Failed to export workflow');
+    }
+  };
+
   const handleRunWorkflow = async () => {
     if (!id || !workflow?.isActive) return;
     try {
@@ -281,6 +300,13 @@ export const WorkflowDetail: React.FC = () => {
               <PlayCircle className="w-4 h-4" />
             )}
             Run Workflow
+          </button>
+          <button
+            onClick={handleExport}
+            className="flex items-center gap-2 px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg text-sm font-medium transition-all"
+          >
+            <Download className="w-4 h-4" />
+            Export JSON
           </button>
         </div>
       </nav>

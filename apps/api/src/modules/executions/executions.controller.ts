@@ -40,7 +40,11 @@ export const runWorkflow = async (req: AuthenticatedRequest, res: Response, next
       message: 'Workflow queued',
       executionId: executionId,
     });
-  } catch (error) {
+  } catch (error: any) {
+    if (error.message && error.message.startsWith('Workflow validation failed')) {
+      res.status(400).json({ message: error.message });
+      return;
+    }
     next(error);
   }
 };

@@ -1,8 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import { apiFetch } from '../lib/api';
-import { LogOut, User as UserIcon, LayoutDashboard, Settings, Users, Plus } from 'lucide-react';
+import { LogOut, User as UserIcon, LayoutDashboard, Settings, Users, Plus, Upload } from 'lucide-react';
 import { WorkspaceSwitcher } from '../components/WorkspaceSwitcher';
 import { useWorkspaceStore } from '../store/workspaceStore';
 import { useWorkflowStore } from '../store/workflowStore';
@@ -18,6 +18,38 @@ export const Dashboard: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [showCreateWorkspaceModal, setShowCreateWorkspaceModal] = useState(false);
   const [showCreateWorkflowModal, setShowCreateWorkflowModal] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !activeWorkspaceId) return;
+
+    try {
+      const reader = new FileReader();
+      reader.onload = async (event) => {
+        const json = event.target?.result as string;
+        try {
+          const payload = JSON.parse(json);
+          await apiFetch(`/workflows/workspace/${activeWorkspaceId}/import`, {
+            method: 'POST',
+            body: JSON.stringify(payload),
+          });
+          await fetchWorkflows(activeWorkspaceId);
+          alert('Workflow imported successfully!');
+        } catch (err) {
+          console.error(err);
+          alert('Failed to parse or import workflow JSON.');
+        }
+      };
+      reader.readAsText(file);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
 
   useEffect(() => {
     const init = async () => {
@@ -156,12 +188,27 @@ export const Dashboard: React.FC = () => {
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <h4 className="text-white font-medium">Workflows</h4>
-                    <button 
-                      onClick={() => setShowCreateWorkflowModal(true)}
-                      className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-1"
-                    >
-                      <Plus className="w-4 h-4" /> New Workflow
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <input 
+                        type="file" 
+                        accept=".json" 
+                        className="hidden" 
+                        ref={fileInputRef} 
+                        onChange={handleImport} 
+                      />
+                      <button 
+                        onClick={() => fileInputRef.current?.click()}
+                        className="bg-gray-800 hover:bg-gray-700 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-1"
+                      >
+                        <Upload className="w-4 h-4" /> Import JSON
+                      </button>
+                      <button 
+                        onClick={() => setShowCreateWorkflowModal(true)}
+                        className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-1"
+                      >
+                        <Plus className="w-4 h-4" /> New Workflow
+                      </button>
+                    </div>
                   </div>
                   
                   {workflowsLoading ? (

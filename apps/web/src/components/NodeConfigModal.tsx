@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Save } from 'lucide-react';
 import { NodeProfile } from '@stargate/shared';
+import { useWorkflowStore } from '../store/workflowStore';
 
 interface NodeConfigModalProps {
   node: NodeProfile | null;
@@ -22,6 +23,27 @@ export const NodeConfigModal: React.FC<NodeConfigModalProps> = ({
   const [timeout, setTimeoutVal] = useState('30000');
   const [expression, setExpression] = useState('');
   const [error, setError] = useState<string | null>(null);
+
+  const { nodes: graphNodes } = useWorkflowStore();
+  const [availableVars, setAvailableVars] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (isOpen && node && graphNodes) {
+      // Find all nodes that are not the current node (simplified upstream check for UI)
+      const vars = graphNodes
+        .filter((n: any) => n.id !== node.id)
+        .map((n: any) => ({
+          id: n.id,
+          label: n.label || n.data?.label || 'Node',
+          type: n.type,
+        }));
+      setAvailableVars(vars);
+    }
+  }, [isOpen, node, graphNodes]);
+
+  const copyVariable = (path: string) => {
+    navigator.clipboard.writeText(`{{${path}}}`);
+  };
 
   useEffect(() => {
     if (isOpen && node) {
@@ -90,8 +112,11 @@ export const NodeConfigModal: React.FC<NodeConfigModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="bg-gray-900 border border-gray-800 rounded-xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col">
-        <div className="px-6 py-4 border-b border-gray-800 flex items-center justify-between bg-gray-900/50">
+      <div className="bg-gray-900 border border-gray-800 rounded-xl shadow-2xl w-full max-w-4xl overflow-hidden flex flex-row">
+        
+        {/* Left Side: Configuration */}
+        <div className="flex-1 flex flex-col border-r border-gray-800">
+          <div className="px-6 py-4 border-b border-gray-800 flex items-center justify-between bg-gray-900/50">
           <h2 className="text-lg font-semibold text-white">Configure {node.type} Node</h2>
           <button
             onClick={onClose}
@@ -205,22 +230,68 @@ export const NodeConfigModal: React.FC<NodeConfigModalProps> = ({
           </div>
         </form>
 
-        <div className="px-6 py-4 bg-gray-900/50 border-t border-gray-800 flex justify-end gap-3">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2 text-sm font-medium text-gray-300 hover:text-white transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSubmit}
-            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg transition-colors flex items-center gap-2"
-          >
-            <Save className="w-4 h-4" />
-            Save Configuration
-          </button>
+          <div className="px-6 py-4 bg-gray-900/50 border-t border-gray-800 flex justify-end gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-sm font-medium text-gray-300 hover:text-white transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSubmit}
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg transition-colors flex items-center gap-2"
+            >
+              <Save className="w-4 h-4" />
+              Save Configuration
+            </button>
+          </div>
         </div>
+
+        {/* Right Side: Variable Explorer */}
+        <div className="w-80 bg-gray-900/50 flex flex-col">
+          <div className="px-6 py-4 border-b border-gray-800 bg-gray-900/80">
+            <h2 className="text-sm font-semibold text-white">Available Variables</h2>
+          </div>
+          <div className="flex-1 overflow-y-auto p-4">
+            <div className="space-y-4">
+              <div>
+                <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Trigger Payload</h3>
+                <div 
+                  onClick={() => copyVariable('trigger.payload')}
+                  className="text-xs text-indigo-400 font-mono hover:text-indigo-300 cursor-pointer p-1.5 rounded hover:bg-indigo-500/10 transition-colors"
+                >
+                  &#123;&#123;trigger.payload&#125;&#125;
+                </div>
+              </div>
+              
+              {availableVars.map(v => (
+                <div key={v.id}>
+                  <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 flex items-center gap-2">
+                    {v.label} <span className="text-[10px] bg-gray-800 px-1.5 py-0.5 rounded text-gray-400">{v.type}</span>
+                  </h3>
+                  <div className="space-y-1">
+                    {['status', 'body', 'headers'].map(prop => (
+                      <div 
+                        key={prop}
+                        onClick={() => copyVariable(`${v.id}.${prop}`)}
+                        className="text-xs text-indigo-400 font-mono hover:text-indigo-300 cursor-pointer p-1.5 rounded hover:bg-indigo-500/10 transition-colors"
+                        title={`Click to copy: {{${v.id}.${prop}}}`}
+                      >
+                        &#123;&#123;{v.id}.{prop}&#125;&#125;
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+              
+              {availableVars.length === 0 && (
+                <p className="text-xs text-gray-500">No upstream nodes found.</p>
+              )}
+            </div>
+          </div>
+        </div>
+        
       </div>
     </div>
   );

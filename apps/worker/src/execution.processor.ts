@@ -1,6 +1,8 @@
 import { prisma } from '@stargate/database';
 // @ts-ignore
 import jexl from 'jexl';
+import { VariableResolver } from './utils/resolver';
+import { validateSSRF } from './utils/ssrf';
 
 export const runWorkflowNodes = async (
   workflowExecutionId: string,
@@ -48,6 +50,7 @@ export const runWorkflowNodes = async (
   }
 
   const context: any = { response: {}, previousNode: {}, workflow: {} };
+  const executionContext: Record<string, any> = {}; // Full store by node ID
   const executionState = new Map<string, 'SUCCESS' | 'FAILED' | 'SKIPPED'>();
   const edgeState = new Map<string, boolean>();
 
@@ -96,7 +99,11 @@ export const runWorkflowNodes = async (
         output = { result };
       } else {
         // Standard HTTP execution
-        const config = (node.config as any) || {};
+        let config = (node.config as any) || {};
+        
+        // Resolve variables using VariableResolver
+        config = VariableResolver.resolveObject(config, executionContext);
+
         const method = config.method || 'GET';
         const url = config.url;
         const headers = config.headers || {};
@@ -106,6 +113,8 @@ export const runWorkflowNodes = async (
         if (!url) {
           throw new Error('Node configuration is missing URL');
         }
+
+        await validateSSRF(url);
 
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
@@ -169,6 +178,9 @@ export const runWorkflowNodes = async (
       // Update context for next nodes
       context.previousNode = output;
       context.response = output;
+      
+      // Store in global execution context
+      executionContext[node.id] = output;
 
       // Evaluate outgoing edges dynamically
       const outgoing = adj.get(nodeId) || [];
@@ -176,7 +188,10 @@ export const runWorkflowNodes = async (
         let passed = true;
         if (e.condition && e.condition.trim().length > 0) {
           try {
-            passed = !!(await jexl.eval(e.condition, context));
+            // Also resolve variables in the condition itself before passing to jexl
+            // Jexl provides its own context, but evaluating mapped expressions is helpful too.
+            const resolvedCondition = VariableResolver.resolveString(e.condition, executionContext);
+            passed = !!(await jexl.eval(resolvedCondition, context));
           } catch (err) {
             console.error(`Edge condition evaluation failed for edge ${e.id}:`, err);
             passed = false;

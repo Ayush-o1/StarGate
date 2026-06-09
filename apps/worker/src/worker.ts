@@ -41,9 +41,20 @@ export const initWorker = () => {
         throw new Error(`Workflow ${workflowId} not found`);
       }
 
-      // 2. Execute nodes sequentially
+      // 2. Execute nodes sequentially with a global timeout of 5 minutes
+      const WORKFLOW_TIMEOUT_MS = 5 * 60 * 1000;
+      let timeoutId: NodeJS.Timeout;
+      
+      const timeoutPromise = new Promise((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error(`Workflow execution exceeded maximum time limit of ${WORKFLOW_TIMEOUT_MS}ms`)), WORKFLOW_TIMEOUT_MS);
+      });
+
       try {
-        await runWorkflowNodes(executionId, workflow.nodes, workflow.edges);
+        await Promise.race([
+          runWorkflowNodes(executionId, workflow.nodes, workflow.edges),
+          timeoutPromise
+        ]);
+        clearTimeout(timeoutId!);
         
         // 3. Mark trigger execution if passed
         if (triggerExecutionId) {
@@ -59,6 +70,7 @@ export const initWorker = () => {
             data: { status: 'FAILED', finishedAt: new Date() },
           });
         }
+        clearTimeout(timeoutId!);
         // Rethrow so BullMQ knows the job failed
         throw error;
       }

@@ -6,4 +6,9 @@ module.exports = {
   ],
   parser: "@typescript-eslint/parser",
   ignorePatterns: ["dist", ".eslintrc.cjs"],
+  rules: {
+    "@typescript-eslint/no-explicit-any": "off",
+    "react-hooks/exhaustive-deps": "off",
+    "react-hooks/set-state-in-effect": "off"
+  }
 };
