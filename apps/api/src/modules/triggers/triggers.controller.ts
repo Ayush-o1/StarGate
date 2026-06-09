@@ -1,9 +1,10 @@
 import { Response, NextFunction } from 'express';
 import { prisma } from '@stargate/database';
-import { CreateNodeSchema, UpdateNodeSchema, UpdateNodePositionSchema } from '@stargate/shared';
-import { AuthenticatedRequest } from '../middleware/auth';
+import { CreateTriggerSchema } from '@stargate/shared';
+import { AuthenticatedRequest } from '../../middleware/auth';
+import * as triggersService from './triggers.service';
 
-export const createNode = async (
+export const createTrigger = async (
   req: AuthenticatedRequest,
   res: Response,
   next: NextFunction
@@ -11,7 +12,7 @@ export const createNode = async (
   try {
     const userId = req.user!.userId;
     const { workflowId } = req.params;
-    const validatedData = CreateNodeSchema.parse(req.body);
+    const validatedData = CreateTriggerSchema.parse(req.body);
 
     const workflow = await prisma.workflow.findUnique({ where: { id: workflowId } });
     if (!workflow) {
@@ -28,21 +29,14 @@ export const createNode = async (
       return;
     }
 
-    const node = await prisma.node.create({
-      data: {
-        ...validatedData,
-        config: validatedData.config as any,
-        workflowId,
-      },
-    });
-
-    res.status(201).json(node);
+    const trigger = await triggersService.createTrigger(workflowId, validatedData);
+    res.status(201).json(trigger);
   } catch (error) {
     next(error);
   }
 };
 
-export const listNodes = async (
+export const listTriggers = async (
   req: AuthenticatedRequest,
   res: Response,
   next: NextFunction
@@ -66,60 +60,14 @@ export const listNodes = async (
       return;
     }
 
-    const nodes = await prisma.node.findMany({
-      where: { workflowId },
-      orderBy: { createdAt: 'asc' },
-    });
-
-    res.json(nodes);
+    const triggers = await triggersService.getTriggers(workflowId);
+    res.json(triggers);
   } catch (error) {
     next(error);
   }
 };
 
-export const updateNode = async (
-  req: AuthenticatedRequest,
-  res: Response,
-  next: NextFunction
-): Promise<void> => {
-  try {
-    const userId = req.user!.userId;
-    const { id } = req.params;
-    const validatedData = UpdateNodeSchema.parse(req.body);
-
-    const node = await prisma.node.findUnique({
-      where: { id },
-      include: { workflow: true },
-    });
-    if (!node) {
-      res.status(404).json({ message: 'Node not found' });
-      return;
-    }
-
-    const membership = await prisma.workspaceMember.findUnique({
-      where: { userId_workspaceId: { userId, workspaceId: node.workflow.workspaceId } },
-    });
-
-    if (!membership) {
-      res.status(403).json({ message: 'Forbidden' });
-      return;
-    }
-
-    const updatedNode = await prisma.node.update({
-      where: { id },
-      data: {
-        ...validatedData,
-        config: validatedData.config !== undefined ? (validatedData.config as any) : undefined,
-      },
-    });
-
-    res.json(updatedNode);
-  } catch (error) {
-    next(error);
-  }
-};
-
-export const deleteNode = async (
+export const deleteTrigger = async (
   req: AuthenticatedRequest,
   res: Response,
   next: NextFunction
@@ -128,33 +76,33 @@ export const deleteNode = async (
     const userId = req.user!.userId;
     const { id } = req.params;
 
-    const node = await prisma.node.findUnique({
+    const trigger = await prisma.workflowTrigger.findUnique({
       where: { id },
       include: { workflow: true },
     });
-    if (!node) {
-      res.status(404).json({ message: 'Node not found' });
+
+    if (!trigger) {
+      res.status(404).json({ message: 'Trigger not found' });
       return;
     }
 
     const membership = await prisma.workspaceMember.findUnique({
-      where: { userId_workspaceId: { userId, workspaceId: node.workflow.workspaceId } },
+      where: { userId_workspaceId: { userId, workspaceId: trigger.workflow.workspaceId } },
     });
 
-    if (!membership) {
-      res.status(403).json({ message: 'Forbidden' });
+    if (!membership || membership.role !== 'OWNER') {
+      res.status(403).json({ message: 'Forbidden: Only owners can delete triggers' });
       return;
     }
 
-    await prisma.node.delete({ where: { id } });
-
+    await triggersService.deleteTrigger(id);
     res.status(204).send();
   } catch (error) {
     next(error);
   }
 };
 
-export const updateNodePosition = async (
+export const enableTrigger = async (
   req: AuthenticatedRequest,
   res: Response,
   next: NextFunction
@@ -162,19 +110,19 @@ export const updateNodePosition = async (
   try {
     const userId = req.user!.userId;
     const { id } = req.params;
-    const validatedData = UpdateNodePositionSchema.parse(req.body);
 
-    const node = await prisma.node.findUnique({
+    const trigger = await prisma.workflowTrigger.findUnique({
       where: { id },
       include: { workflow: true },
     });
-    if (!node) {
-      res.status(404).json({ message: 'Node not found' });
+
+    if (!trigger) {
+      res.status(404).json({ message: 'Trigger not found' });
       return;
     }
 
     const membership = await prisma.workspaceMember.findUnique({
-      where: { userId_workspaceId: { userId, workspaceId: node.workflow.workspaceId } },
+      where: { userId_workspaceId: { userId, workspaceId: trigger.workflow.workspaceId } },
     });
 
     if (!membership) {
@@ -182,15 +130,43 @@ export const updateNodePosition = async (
       return;
     }
 
-    const updatedNode = await prisma.node.update({
+    const updated = await triggersService.toggleTrigger(id, true);
+    res.json(updated);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const disableTrigger = async (
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const userId = req.user!.userId;
+    const { id } = req.params;
+
+    const trigger = await prisma.workflowTrigger.findUnique({
       where: { id },
-      data: {
-        positionX: validatedData.positionX,
-        positionY: validatedData.positionY,
-      },
+      include: { workflow: true },
     });
 
-    res.json(updatedNode);
+    if (!trigger) {
+      res.status(404).json({ message: 'Trigger not found' });
+      return;
+    }
+
+    const membership = await prisma.workspaceMember.findUnique({
+      where: { userId_workspaceId: { userId, workspaceId: trigger.workflow.workspaceId } },
+    });
+
+    if (!membership) {
+      res.status(403).json({ message: 'Forbidden' });
+      return;
+    }
+
+    const updated = await triggersService.toggleTrigger(id, false);
+    res.json(updated);
   } catch (error) {
     next(error);
   }

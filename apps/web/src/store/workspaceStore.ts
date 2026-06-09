@@ -40,6 +40,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
         };
       });
     } catch (e: any) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       set({ error: e.message || 'Failed to fetch workspaces' });
     } finally {
       set({ loading: false });
@@ -59,6 +60,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
         activeWorkspaceId: newWorkspace.id,
       }));
     } catch (e: any) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       set({ error: e.message || 'Failed to create workspace' });
       throw e;
     } finally {

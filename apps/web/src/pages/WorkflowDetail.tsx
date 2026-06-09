@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, PlayCircle, Loader2 } from 'lucide-react';
+import { ArrowLeft, PlayCircle, Loader2, Copy } from 'lucide-react';
 import ReactFlow, {
   MiniMap,
   Controls,
@@ -18,8 +18,11 @@ import { apiFetch } from '../lib/api';
 import { WorkflowProfile, WorkflowExecutionProfile } from '@stargate/shared';
 import { useWorkflowStore } from '../store/workflowStore';
 import { useWorkflowExecutionStore } from '../store/workflowExecutionStore';
+import { useTriggerStore } from '../store/triggerStore';
+import { useAuthStore } from '../store/authStore';
 import { ExecutionDetailModal } from '../components/ExecutionDetailModal';
 import { CustomNode } from '../components/CustomNode';
+import { TriggerModal } from '../components/TriggerModal';
 
 const nodeTypes = {
   custom: CustomNode,
@@ -28,6 +31,7 @@ const nodeTypes = {
 export const WorkflowDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const token = useAuthStore((s) => s.tokens?.accessToken);
   const [workflow, setWorkflow] = useState<WorkflowProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -39,7 +43,10 @@ export const WorkflowDetail: React.FC = () => {
   } = useWorkflowStore();
 
   const { executions, fetchExecutions, runWorkflow, loading: runningWorkflow } = useWorkflowExecutionStore();
+  const { triggers, fetchTriggers, createTrigger, toggleTrigger, deleteTrigger } = useTriggerStore();
+
   const [selectedExecution, setSelectedExecution] = useState<WorkflowExecutionProfile | null>(null);
+  const [isTriggerModalOpen, setIsTriggerModalOpen] = useState(false);
 
   const [rfNodes, setRfNodes, onNodesChange] = useNodesState([]);
   const [rfEdges, setRfEdges, onEdgesChange] = useEdgesState([]);
@@ -50,17 +57,28 @@ export const WorkflowDetail: React.FC = () => {
       setWorkflow(data);
       await fetchWorkflowGraph(id!);
       await fetchExecutions(id!);
+      if (token) await fetchTriggers(id!, token);
     } catch (e) {
       console.error(e);
       navigate('/dashboard');
     } finally {
       setLoading(false);
     }
-  }, [id, navigate, fetchWorkflowGraph, fetchExecutions]);
+  }, [id, navigate, fetchWorkflowGraph, fetchExecutions, fetchTriggers, token]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchWorkflowData();
   }, [fetchWorkflowData]);
+
+  // Polling for live status updates
+  useEffect(() => {
+    if (!id || !workflow) return;
+    const interval = setInterval(() => {
+      fetchExecutions(id);
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [id, workflow, fetchExecutions]);
 
   // Sync store data to React Flow state
   useEffect(() => {
@@ -161,14 +179,26 @@ export const WorkflowDetail: React.FC = () => {
   };
 
   const handleRunWorkflow = async () => {
-    if (!id) return;
+    if (!id || !workflow?.isActive) return;
     try {
       await runWorkflow(id);
       await fetchExecutions(id);
-      setTimeout(() => fetchExecutions(id), 1500);
     } catch (e) {
       console.error('Failed to run workflow', e);
-      alert('Failed to run workflow');
+      alert('Failed to run workflow. Is it active?');
+    }
+  };
+
+  const handleToggleWorkflowActive = async () => {
+    if (!workflow || !id) return;
+    try {
+      const updated = await apiFetch(`/workflows/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ isActive: !workflow.isActive }),
+      });
+      setWorkflow(updated);
+    } catch (e) {
+      console.error('Failed to toggle workflow state', e);
     }
   };
 
@@ -194,7 +224,17 @@ export const WorkflowDetail: React.FC = () => {
               <ArrowLeft className="w-5 h-5" />
             </button>
             <div>
-              <h1 className="font-semibold text-lg">{workflow.name}</h1>
+              <h1 className="font-semibold text-lg flex items-center gap-2">
+                {workflow.name}
+                <button
+                  onClick={handleToggleWorkflowActive}
+                  className={`text-xs px-2 py-0.5 rounded transition-colors ${
+                    workflow.isActive ? 'bg-green-600 hover:bg-green-500' : 'bg-red-600 hover:bg-red-500'
+                  }`}
+                >
+                  {workflow.isActive ? 'ACTIVE' : 'INACTIVE'}
+                </button>
+              </h1>
               <div className="text-xs text-gray-500 flex items-center gap-2">
                 <span
                   className={`px-1.5 py-0.5 rounded uppercase font-bold text-[9px] ${
@@ -211,7 +251,7 @@ export const WorkflowDetail: React.FC = () => {
           </div>
           <button
             onClick={handleRunWorkflow}
-            disabled={runningWorkflow || storeNodes.length === 0}
+            disabled={runningWorkflow || storeNodes.length === 0 || !workflow.isActive}
             className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-800 disabled:text-gray-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 shadow-lg shadow-indigo-900/20"
           >
             {runningWorkflow ? (
@@ -263,57 +303,154 @@ export const WorkflowDetail: React.FC = () => {
           </div>
         </div>
 
-        {/* Executions Panel */}
-        <div className="h-64 border-t border-gray-800 bg-gray-900 overflow-y-auto flex-none">
-          <div className="sticky top-0 bg-gray-900 p-4 border-b border-gray-800/50 flex items-center justify-between z-10">
-            <h3 className="text-sm font-medium text-gray-400 uppercase tracking-wider">
-              Execution History
-            </h3>
-            <button
-              onClick={() => id && fetchExecutions(id)}
-              className="text-xs text-indigo-400 hover:text-indigo-300"
-            >
-              Refresh
-            </button>
-          </div>
-          {executions.length === 0 ? (
-            <div className="p-8 text-center text-gray-500 text-sm">
-              No executions found. Click Run Workflow to start.
+        {/* Info Panels */}
+        <div className="h-64 border-t border-gray-800 bg-gray-900 flex overflow-hidden flex-none">
+          
+          {/* Executions Panel */}
+          <div className="w-1/2 flex flex-col border-r border-gray-800">
+            <div className="sticky top-0 bg-gray-900 p-4 border-b border-gray-800/50 flex items-center justify-between z-10">
+              <h3 className="text-sm font-medium text-gray-400 uppercase tracking-wider">
+                Executions
+              </h3>
+              <button
+                onClick={() => id && fetchExecutions(id)}
+                className="text-xs text-indigo-400 hover:text-indigo-300"
+              >
+                Refresh
+              </button>
             </div>
-          ) : (
-            <div className="divide-y divide-gray-800">
-              {executions.map((exec) => (
-                <div
-                  key={exec.id}
-                  onClick={() => setSelectedExecution(exec)}
-                  className="flex items-center justify-between p-4 hover:bg-gray-800/50 cursor-pointer transition-colors"
-                >
-                  <div className="flex items-center gap-4">
-                    <span
-                      className={`px-2 py-1 rounded text-xs font-bold ${
-                        exec.status === 'SUCCESS'
-                          ? 'bg-green-500/10 text-green-500'
-                          : exec.status === 'FAILED'
-                          ? 'bg-red-500/10 text-red-500'
-                          : exec.status === 'RUNNING'
-                          ? 'bg-blue-500/10 text-blue-500'
-                          : 'bg-gray-800 text-gray-400'
-                      }`}
-                    >
-                      {exec.status}
-                    </span>
-                    <span className="font-mono text-sm text-gray-300">
-                      {exec.id.split('-')[0]}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-6 text-sm text-gray-500">
-                    {exec.durationMs !== null && <span>{exec.durationMs}ms</span>}
-                    <span>{new Date(exec.startedAt).toLocaleString()}</span>
-                  </div>
+            <div className="flex-1 overflow-y-auto">
+              {executions.length === 0 ? (
+                <div className="p-8 text-center text-gray-500 text-sm">
+                  No executions found. Click Run Workflow to start.
                 </div>
-              ))}
+              ) : (
+                <div className="divide-y divide-gray-800">
+                  {executions.map((exec) => (
+                    <div
+                      key={exec.id}
+                      onClick={() => setSelectedExecution(exec)}
+                      className="flex items-center justify-between p-4 hover:bg-gray-800/50 cursor-pointer transition-colors"
+                    >
+                      <div className="flex flex-col flex-1">
+                        <div className="flex items-center justify-between mb-1">
+                          <div className="flex items-center gap-4">
+                            <span
+                              className={`px-2 py-1 rounded text-xs font-bold ${
+                                exec.status === 'SUCCESS'
+                                  ? 'bg-green-500/10 text-green-500'
+                                  : exec.status === 'FAILED'
+                                  ? 'bg-red-500/10 text-red-500'
+                                  : exec.status === 'RUNNING'
+                                  ? 'bg-blue-500/10 text-blue-500'
+                                  : exec.status === 'QUEUED'
+                                  ? 'bg-purple-500/10 text-purple-500'
+                                  : 'bg-gray-800 text-gray-400'
+                              }`}
+                            >
+                              {exec.status}
+                            </span>
+                            <span className="font-mono text-sm text-gray-300">
+                              {exec.id.split('-')[0]}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-6 text-sm text-gray-500">
+                            {exec.durationMs !== null && <span>{exec.durationMs}ms</span>}
+                            <span>{new Date(exec.startedAt).toLocaleString()}</span>
+                          </div>
+                        </div>
+                        {exec.errorMessage && (
+                          <div className="text-xs text-red-400 mt-1 line-clamp-1">
+                            {exec.errorMessage}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
-          )}
+          </div>
+
+          {/* Triggers Panel */}
+          <div className="w-1/2 flex flex-col">
+            <div className="sticky top-0 bg-gray-900 p-4 border-b border-gray-800/50 flex items-center justify-between z-10">
+              <h3 className="text-sm font-medium text-gray-400 uppercase tracking-wider">
+                Triggers
+              </h3>
+              <button
+                onClick={() => setIsTriggerModalOpen(true)}
+                className="text-xs bg-indigo-600 hover:bg-indigo-500 text-white px-2 py-1 rounded transition-colors"
+              >
+                + Add Trigger
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              {triggers.length === 0 ? (
+                <div className="p-8 text-center text-gray-500 text-sm">
+                  No triggers configured.
+                </div>
+              ) : (
+                <div className="divide-y divide-gray-800">
+                  {triggers.map((trigger) => (
+                    <div
+                      key={trigger.id}
+                      className="flex flex-col p-4 hover:bg-gray-800/50 transition-colors"
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-3">
+                          <span className="font-bold text-gray-200 text-sm">
+                            {trigger.type}
+                          </span>
+                          <button
+                            onClick={() => toggleTrigger(trigger.id, !trigger.enabled, token!)}
+                            className={`text-xs px-2 py-0.5 rounded font-bold ${
+                              trigger.enabled
+                                ? 'bg-green-500/20 text-green-400'
+                                : 'bg-red-500/20 text-red-400'
+                            }`}
+                          >
+                            {trigger.enabled ? 'ENABLED' : 'DISABLED'}
+                          </button>
+                        </div>
+                        <button
+                          onClick={() => deleteTrigger(trigger.id, token!)}
+                          className="text-xs text-red-400 hover:text-red-300 transition-colors"
+                        >
+                          Delete
+                        </button>
+                      </div>
+
+                      {trigger.type === 'WEBHOOK' && trigger.webhookPath && (
+                        <div className="flex items-center justify-between bg-gray-950 p-2 rounded text-xs text-gray-400 font-mono mt-1">
+                          <span>{`${window.location.origin}/api/v1/webhooks/${trigger.webhookPath}`}</span>
+                          <button
+                            onClick={() => {
+                              navigator.clipboard.writeText(`${window.location.origin}/api/v1/webhooks/${trigger.webhookPath}`);
+                              alert('Webhook URL copied!');
+                            }}
+                            className="p-1 hover:text-white transition-colors"
+                          >
+                            <Copy className="w-4 h-4" />
+                          </button>
+                        </div>
+                      )}
+
+                      {trigger.type === 'SCHEDULE' && trigger.cron && (
+                        <div className="text-xs text-gray-400 font-mono mt-1">
+                          Cron: {trigger.cron}
+                        </div>
+                      )}
+                      
+                      <div className="text-xs text-gray-500 mt-2">
+                        Created: {new Date(trigger.createdAt).toLocaleString()}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       </main>
 
@@ -323,6 +460,16 @@ export const WorkflowDetail: React.FC = () => {
           onClose={() => setSelectedExecution(null)}
         />
       )}
+
+      <TriggerModal
+        isOpen={isTriggerModalOpen}
+        onClose={() => setIsTriggerModalOpen(false)}
+        onSubmit={async (data) => {
+          if (id && token) {
+            await createTrigger(id, data, token);
+          }
+        }}
+      />
     </div>
   );
 };

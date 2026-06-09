@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, RequestHandler } from 'express';
 import { authenticateToken } from '../middleware/auth';
 import {
   createWorkflow,
@@ -10,7 +10,7 @@ import {
 
 const router = Router();
 
-router.use(authenticateToken as any);
+router.use(authenticateToken as RequestHandler);
 
 // Routes nested under a workspace
 router.post('/workspace/:workspaceId', createWorkflow);

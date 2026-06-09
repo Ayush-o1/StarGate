@@ -74,12 +74,14 @@ model Workflow {
   version     Int            @default(1)
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
+  isActive    Boolean        @default(true)
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   createdBy User      @relation("WorkflowCreator", fields: [createdById], references: [id])
   nodes     Node[]
   edges     Edge[]
   executions WorkflowExecution[]
+  triggers  WorkflowTrigger[]
 }
 
 model Node {
@@ -112,6 +114,7 @@ model Edge {
 }
 
 enum ExecutionStatus {
+  QUEUED
   PENDING
   RUNNING
   SUCCESS
@@ -123,6 +126,7 @@ model WorkflowExecution {
   workflowId  String
   startedById String
   status      ExecutionStatus @default(PENDING)
+  errorMessage String?
   startedAt   DateTime        @default(now())
   completedAt DateTime?
   durationMs  Int?
@@ -146,4 +150,33 @@ model NodeExecution {
 
   workflowExecution   WorkflowExecution @relation(fields: [workflowExecutionId], references: [id], onDelete: Cascade)
   node                Node              @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+}
+
+enum TriggerType {
+  MANUAL
+  WEBHOOK
+  SCHEDULE
+}
+
+model WorkflowTrigger {
+  id           String      @id @default(uuid())
+  workflowId   String
+  type         TriggerType
+  webhookPath  String?
+  cron         String?
+  enabled      Boolean     @default(true)
+  createdAt    DateTime    @default(now())
+
+  workflow Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  executions TriggerExecution[]
+}
+
+model TriggerExecution {
+  id          String   @id @default(uuid())
+  triggerId   String
+  status      ExecutionStatus
+  startedAt   DateTime @default(now())
+  finishedAt  DateTime?
+
+  trigger WorkflowTrigger @relation(fields: [triggerId], references: [id], onDelete: Cascade)
 }

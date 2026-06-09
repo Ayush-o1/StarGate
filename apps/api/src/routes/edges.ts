@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, RequestHandler } from 'express';
 import { authenticateToken } from '../middleware/auth';
 import {
   createEdge,
@@ -8,7 +8,7 @@ import {
 
 const router = Router();
 
-router.use(authenticateToken as any);
+router.use(authenticateToken as RequestHandler);
 
 router.post('/workflow/:workflowId', createEdge);
 router.get('/workflow/:workflowId', listEdges);

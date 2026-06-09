@@ -21,6 +21,7 @@ export const useWorkflowExecutionStore = create<WorkflowExecutionState>((set) =>
       const data = await apiFetch(`/workflows/${workflowId}/executions`);
       set({ executions: data });
     } catch (e: any) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       set({ error: e.message || 'Failed to fetch executions' });
     } finally {
       set({ loading: false });
@@ -32,6 +33,7 @@ export const useWorkflowExecutionStore = create<WorkflowExecutionState>((set) =>
     try {
       await apiFetch(`/workflows/${workflowId}/run`, { method: 'POST' });
     } catch (e: any) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       set({ error: e.message || 'Failed to run workflow' });
       throw e;
     } finally {

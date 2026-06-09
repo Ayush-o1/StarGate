@@ -17,6 +17,11 @@ services:
       timeout: 5s
       retries: 5
 
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+
   api:
     build:
       context: .
@@ -29,9 +34,30 @@ services:
       - DATABASE_URL=postgresql://stargate:password@postgres:5432/stargate_dev?schema=public
       - NODE_ENV=production
       - PORT=3000
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_started
+
+  worker:
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql://stargate:password@postgres:5432/stargate_dev?schema=public
+      - NODE_ENV=production
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
 
   web:
     build:

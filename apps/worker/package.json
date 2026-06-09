@@ -1,0 +1,26 @@
+{
+  "name": "@stargate/worker",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "build": "tsc",
+    "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
+    "start": "node dist/index.js",
+    "lint": "eslint src/ --ext .ts"
+  },
+  "dependencies": {
+    "@stargate/database": "workspace:*",
+    "@stargate/shared": "workspace:*",
+    "bullmq": "^5.78.0",
+    "ioredis": "^5.11.1",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "@stargate/config": "workspace:*",
+    "@types/node": "^20.0.0",
+    "eslint": "^8.0.0",
+    "ts-node": "^10.9.1",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.0.0"
+  }
+}

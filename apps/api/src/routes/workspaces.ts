@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, RequestHandler } from 'express';
 import { authenticateToken } from '../middleware/auth';
 import {
   createWorkspace,
@@ -11,7 +11,7 @@ import {
 const router = Router();
 
 // Protect all workspace routes
-router.use(authenticateToken as any);
+router.use(authenticateToken as RequestHandler);
 
 router.post('/', createWorkspace);
 router.get('/', listWorkspaces);

@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, RequestHandler } from 'express';
 import { authenticateToken } from '../../middleware/auth';
 import {
   runWorkflow,
@@ -9,7 +9,7 @@ import {
 
 const router = Router();
 
-router.use(authenticateToken as any);
+router.use(authenticateToken as RequestHandler);
 
 // Endpoints mounted under /api/v1/workflows/:id
 // But since the router doesn't have mergeParams by default, 
@@ -20,12 +20,12 @@ router.use(authenticateToken as any);
 
 // For /api/v1/workflows/:id/run and /api/v1/workflows/:id/executions
 export const workflowExecutionRouter: Router = Router({ mergeParams: true });
-workflowExecutionRouter.use(authenticateToken as any);
+workflowExecutionRouter.use(authenticateToken as RequestHandler);
 workflowExecutionRouter.post('/run', runWorkflow);
 workflowExecutionRouter.get('/executions', listExecutions);
 
 // For /api/v1/executions/:id and /api/v1/executions/:id/nodes
 export const executionDetailRouter: Router = Router();
-executionDetailRouter.use(authenticateToken as any);
+executionDetailRouter.use(authenticateToken as RequestHandler);
 executionDetailRouter.get('/:id', getExecution);
 executionDetailRouter.get('/:id/nodes', getNodeExecutions);

@@ -1,7 +1,7 @@
 import { Response, NextFunction } from 'express';
 import { prisma } from '@stargate/database';
 import { AuthenticatedRequest } from '../../middleware/auth';
-import { runWorkflowNodes } from './executions.service';
+import { executeWorkflow } from './executions.service';
 
 export const runWorkflow = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
@@ -11,16 +11,15 @@ export const runWorkflow = async (req: AuthenticatedRequest, res: Response, next
     // Verify workflow exists and get workspace ID
     const workflow = await prisma.workflow.findUnique({
       where: { id: workflowId },
-      include: {
-        nodes: {
-          orderBy: { createdAt: 'asc' }
-        },
-        edges: true
-      }
     });
 
     if (!workflow) {
       res.status(404).json({ message: 'Workflow not found' });
+      return;
+    }
+
+    if (!workflow.isActive) {
+      res.status(400).json({ message: 'Workflow inactive' });
       return;
     }
 
@@ -34,25 +33,13 @@ export const runWorkflow = async (req: AuthenticatedRequest, res: Response, next
       return;
     }
 
-    // Create execution record
-    const execution = await prisma.workflowExecution.create({
-      data: {
-        workflowId,
-        startedById: userId,
-        status: 'RUNNING',
-      },
-    });
+    // Delegate to service to create execution and enqueue job
+    const executionId = await executeWorkflow(workflowId);
 
     res.status(202).json({
-      message: 'Workflow execution started',
-      executionId: execution.id,
+      message: 'Workflow queued',
+      executionId: executionId,
     });
-
-    // Run execution asynchronously
-    runWorkflowNodes(execution.id, workflow.nodes, workflow.edges).catch((err) => {
-      console.error('Error in workflow execution background task:', err);
-    });
-
   } catch (error) {
     next(error);
   }

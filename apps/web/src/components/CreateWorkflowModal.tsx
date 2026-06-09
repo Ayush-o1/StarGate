@@ -30,6 +30,7 @@ export const CreateWorkflowModal: React.FC<CreateWorkflowModalProps> = ({ worksp
       onClose();
       navigate(`/workflows/${workflow.id}`);
     } catch (err: any) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       setError(err.message || 'Failed to create workflow');
     } finally {
       setIsSubmitting(false);

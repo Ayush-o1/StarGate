@@ -4,7 +4,8 @@ import { Trash2 } from 'lucide-react';
 import { apiFetch } from '../lib/api';
 import { useWorkflowStore } from '../store/workflowStore';
 
-export const CustomNode = memo(({ id, data, isConnectable }: any) => {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const CustomNode = memo(({ id, data, isConnectable }: { id: string; data: any; isConnectable: boolean }) => {
   const { fetchWorkflowGraph } = useWorkflowStore();
 
   const handleDelete = async (e: React.MouseEvent) => {

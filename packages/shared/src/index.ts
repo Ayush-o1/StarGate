@@ -86,6 +86,7 @@ export const UpdateWorkflowSchema = z.object({
   name: z.string().optional(),
   description: z.string().optional(),
   status: z.enum(['DRAFT', 'ACTIVE']).optional(),
+  isActive: z.boolean().optional(),
   version: z.number().optional(),
 });
 export type UpdateWorkflowDTO = z.infer<typeof UpdateWorkflowSchema>;
@@ -96,7 +97,7 @@ export const CreateNodeSchema = z.object({
   label: z.string(),
   positionX: z.number().default(100),
   positionY: z.number().default(100),
-  config: z.any().optional(),
+  config: z.record(z.string(), z.unknown()).optional(),
 });
 export type CreateNodeDTO = z.infer<typeof CreateNodeSchema>;
 
@@ -105,7 +106,7 @@ export const UpdateNodeSchema = z.object({
   label: z.string().optional(),
   positionX: z.number().optional(),
   positionY: z.number().optional(),
-  config: z.any().optional(),
+  config: z.record(z.string(), z.unknown()).optional(),
 });
 export type UpdateNodeDTO = z.infer<typeof UpdateNodeSchema>;
 
@@ -131,6 +132,7 @@ export interface WorkflowProfile {
   workspaceId: string;
   createdById: string;
   status: 'DRAFT' | 'ACTIVE';
+  isActive: boolean;
   version: number;
   createdAt: string;
   updatedAt: string;
@@ -143,7 +145,7 @@ export interface NodeProfile {
   label: string;
   positionX: number;
   positionY: number;
-  config: any;
+  config: Record<string, unknown> | null;
   createdAt: string;
 }
 
@@ -157,13 +159,14 @@ export interface EdgeProfile {
 }
 
 // Execution Enums & Interfaces
-export type ExecutionStatus = 'PENDING' | 'RUNNING' | 'SUCCESS' | 'FAILED';
+export type ExecutionStatus = 'QUEUED' | 'PENDING' | 'RUNNING' | 'SUCCESS' | 'FAILED';
 
 export interface WorkflowExecutionProfile {
   id: string;
   workflowId: string;
   startedById: string;
   status: ExecutionStatus;
+  errorMessage: string | null;
   startedAt: string;
   completedAt: string | null;
   durationMs: number | null;
@@ -175,9 +178,37 @@ export interface NodeExecutionProfile {
   workflowExecutionId: string;
   nodeId: string;
   status: ExecutionStatus;
-  input: any | null;
-  output: any | null;
+  input: unknown | null;
+  output: unknown | null;
   error: string | null;
   startedAt: string;
   completedAt: string | null;
 }
+
+// Trigger Enums & Interfaces
+export type TriggerType = 'MANUAL' | 'WEBHOOK' | 'SCHEDULE';
+
+export const CreateTriggerSchema = z.object({
+  type: z.enum(['MANUAL', 'WEBHOOK', 'SCHEDULE']),
+  cron: z.string().optional(),
+});
+export type CreateTriggerDTO = z.infer<typeof CreateTriggerSchema>;
+
+export interface WorkflowTriggerProfile {
+  id: string;
+  workflowId: string;
+  type: TriggerType;
+  webhookPath: string | null;
+  cron: string | null;
+  enabled: boolean;
+  createdAt: string;
+}
+
+export interface TriggerExecutionProfile {
+  id: string;
+  triggerId: string;
+  status: ExecutionStatus;
+  startedAt: string;
+  finishedAt: string | null;
+}
+export * from './queue';

@@ -11,6 +11,9 @@ import { nodesRouter } from './routes/nodes';
 import { edgesRouter } from './routes/edges';
 import { workflowsRouter } from './routes/workflows';
 import { workflowExecutionRouter, executionDetailRouter } from './modules/executions/executions.routes';
+import { workflowTriggersRouter, triggersRouter } from './modules/triggers/triggers.routes';
+import { webhooksRouter } from './modules/triggers/webhooks.routes';
+import { schedulerService } from './modules/triggers/scheduler.service';
 import { errorHandler } from './middleware/errorHandler';
 
 dotenv.config();
@@ -33,10 +36,14 @@ app.use('/api/v1/edges', edgesRouter);
 app.use('/api/v1/workflows', workflowsRouter);
 app.use('/api/v1/workflows/:id', workflowExecutionRouter);
 app.use('/api/v1/executions', executionDetailRouter);
+app.use('/api/v1/workflows/:workflowId/triggers', workflowTriggersRouter);
+app.use('/api/v1/triggers', triggersRouter);
+app.use('/api/v1/webhooks', webhooksRouter);
 
 // Global Error Handler
 app.use(errorHandler);
 
 app.listen(port, () => {
   console.log(`[stargate-api] Server running on port ${port}`);
+  schedulerService.loadSchedules();
 });

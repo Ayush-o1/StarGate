@@ -1,4 +1,4 @@
-import { Request, Response, NextFunction } from 'express';
+import { Response, NextFunction } from 'express';
 import { prisma } from '@stargate/database';
 import { CreateWorkflowSchema, UpdateWorkflowSchema } from '@stargate/shared';
 import { AuthenticatedRequest } from '../middleware/auth';

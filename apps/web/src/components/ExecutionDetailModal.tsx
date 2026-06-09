@@ -85,7 +85,7 @@ export const ExecutionDetailModal: React.FC<ExecutionDetailModalProps> = ({ exec
                     </span>
                   </div>
                   
-                  {node.output && (
+                  {!!node.output && (
                     <div className="p-4">
                       <p className="text-xs text-gray-500 mb-2 font-medium uppercase tracking-wider">Output</p>
                       <pre className="bg-black/50 p-3 rounded-lg text-sm font-mono text-gray-300 overflow-x-auto">
@@ -94,11 +94,11 @@ export const ExecutionDetailModal: React.FC<ExecutionDetailModalProps> = ({ exec
                     </div>
                   )}
 
-                  {node.error && (
+                  {!!node.error && (
                     <div className="p-4 bg-red-500/5 border-t border-red-500/10">
                       <p className="text-xs text-red-500 mb-2 font-medium uppercase tracking-wider">Error</p>
                       <pre className="bg-red-500/10 p-3 rounded-lg text-sm font-mono text-red-400 overflow-x-auto whitespace-pre-wrap">
-                        {node.error}
+                        {String(node.error)}
                       </pre>
                     </div>
                   )}

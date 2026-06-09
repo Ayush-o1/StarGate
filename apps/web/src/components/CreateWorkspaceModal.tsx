@@ -26,6 +26,7 @@ export const CreateWorkspaceModal: React.FC<CreateWorkspaceModalProps> = ({ onCl
       await createWorkspace(name, description);
       onClose();
     } catch (err: any) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       setError(err.message || 'Failed to create workspace');
     } finally {
       setIsSubmitting(false);
