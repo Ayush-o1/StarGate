@@ -3,11 +3,12 @@ import { useNavigate, Link } from 'react-router-dom';
 import { apiFetch } from '../lib/api';
 import { useAuthStore } from '../store/authStore';
 import { AuthResponse } from '@stargate/shared';
-import { ArrowRight, AlertCircle } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 
 import { AuthLayout } from '../components/auth/AuthLayout';
 import { Input } from '../components/ui/Input';
 import { Button } from '../components/ui/Button';
+import { Alert } from '../components/ui/Alert';
 
 export const Register: React.FC = () => {
   const [name, setName] = useState('');
@@ -42,11 +43,13 @@ export const Register: React.FC = () => {
   };
 
   return (
-    <AuthLayout title="Create an Account" subtitle="Start orchestrating your workflows">
+    <AuthLayout
+      title="Create an account"
+      subtitle="Build and automate your first workflow in minutes"
+    >
       {error && (
-        <div className="bg-red-500/10 border border-red-500/20 text-red-400 text-sm p-3 rounded-xl mb-6 flex items-start gap-3 animate-in shake">
-          <AlertCircle className="w-5 h-5 shrink-0" />
-          <p className="mt-0.5">{error}</p>
+        <div className="mb-6">
+          <Alert variant="error" onDismiss={() => setError('')}>{error}</Alert>
         </div>
       )}
 
@@ -85,16 +88,16 @@ export const Register: React.FC = () => {
         <Button
           type="submit"
           isLoading={loading}
+          rightIcon={<ArrowRight />}
           className="w-full mt-6"
         >
-          {!loading && 'Create account'}
-          {!loading && <ArrowRight className="w-4 h-4 ml-1" />}
+          Create account
         </Button>
       </form>
 
       <p className="text-center text-sm text-zinc-400 mt-8">
         Already have an account?{' '}
-        <Link to="/login" className="text-indigo-400 hover:text-indigo-300 font-medium transition-colors">
+        <Link to="/login" className="text-brand-400 hover:text-brand-300 font-medium transition-colors">
           Sign in
         </Link>
       </p>

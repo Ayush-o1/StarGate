@@ -3,11 +3,12 @@ import { useNavigate, Link } from 'react-router-dom';
 import { apiFetch } from '../lib/api';
 import { useAuthStore } from '../store/authStore';
 import { AuthResponse } from '@stargate/shared';
-import { ArrowRight, AlertCircle } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 
 import { AuthLayout } from '../components/auth/AuthLayout';
 import { Input } from '../components/ui/Input';
 import { Button } from '../components/ui/Button';
+import { Alert } from '../components/ui/Alert';
 
 export const Login: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -41,11 +42,13 @@ export const Login: React.FC = () => {
   };
 
   return (
-    <AuthLayout title="Welcome to Stargate" subtitle="Sign in to orchestrate your workflows">
+    <AuthLayout
+      title="Welcome back"
+      subtitle="Sign in to manage your automation workflows"
+    >
       {error && (
-        <div className="bg-red-500/10 border border-red-500/20 text-red-400 text-sm p-3 rounded-xl mb-6 flex items-start gap-3 animate-in shake">
-          <AlertCircle className="w-5 h-5 shrink-0" />
-          <p className="mt-0.5">{error}</p>
+        <div className="mb-6">
+          <Alert variant="error" onDismiss={() => setError('')}>{error}</Alert>
         </div>
       )}
 
@@ -73,17 +76,17 @@ export const Login: React.FC = () => {
         <Button
           type="submit"
           isLoading={loading}
+          rightIcon={<ArrowRight />}
           className="w-full mt-6"
         >
-          {!loading && 'Sign in'}
-          {!loading && <ArrowRight className="w-4 h-4 ml-1" />}
+          Sign in
         </Button>
       </form>
 
       <p className="text-center text-sm text-zinc-400 mt-8">
         Don't have an account?{' '}
-        <Link to="/register" className="text-indigo-400 hover:text-indigo-300 font-medium transition-colors">
-          Create an account
+        <Link to="/register" className="text-brand-400 hover:text-brand-300 font-medium transition-colors">
+          Create one free
         </Link>
       </p>
     </AuthLayout>

@@ -1,6 +1,11 @@
 import React, { useState } from 'react';
+import { Building2 } from 'lucide-react';
 import { useWorkspaceStore } from '../store/workspaceStore';
-import { X } from 'lucide-react';
+import { Modal } from './ui/Modal';
+import { Button } from './ui/Button';
+import { Input } from './ui/Input';
+import { Textarea } from './ui/Textarea';
+import { Alert } from './ui/Alert';
 
 interface CreateWorkspaceModalProps {
   onClose: () => void;
@@ -8,94 +13,78 @@ interface CreateWorkspaceModalProps {
 
 export const CreateWorkspaceModal: React.FC<CreateWorkspaceModalProps> = ({ onClose }) => {
   const { createWorkspace } = useWorkspaceStore();
-  const [name, setName] = useState('');
+  const [name,        setName]        = useState('');
   const [description, setDescription] = useState('');
-  const [error, setError] = useState('');
+  const [error,       setError]       = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (e?: React.FormEvent) => {
+    e?.preventDefault();
     if (!name.trim()) {
       setError('Workspace name is required');
       return;
     }
-
     setIsSubmitting(true);
     setError('');
     try {
       await createWorkspace(name, description);
       onClose();
-    } catch (err: any) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      setError(err.message || 'Failed to create workspace');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to create workspace');
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  const footer = (
+    <>
+      <Button variant="ghost" onClick={onClose} disabled={isSubmitting}>
+        Cancel
+      </Button>
+      <Button
+        variant="primary"
+        isLoading={isSubmitting}
+        onClick={handleSubmit}
+        leftIcon={<Building2 />}
+      >
+        Create Workspace
+      </Button>
+    </>
+  );
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="bg-gray-900 border border-gray-800 rounded-2xl w-full max-w-md p-6 shadow-2xl relative">
-        <button 
-          onClick={onClose}
-          className="absolute top-4 right-4 text-gray-400 hover:text-white transition-colors"
-        >
-          <X className="w-5 h-5" />
-        </button>
-        
-        <h2 className="text-xl font-semibold mb-6 text-white">Create New Workspace</h2>
-        
+    <Modal
+      isOpen
+      onClose={onClose}
+      title="Create New Workspace"
+      size="md"
+      footer={footer}
+    >
+      <form onSubmit={handleSubmit} className="p-6 space-y-4">
         {error && (
-          <div className="bg-red-500/10 border border-red-500/20 text-red-400 p-3 rounded-lg text-sm mb-4">
+          <Alert variant="error" onDismiss={() => setError('')}>
             {error}
-          </div>
+          </Alert>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">
-              Workspace Name
-            </label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="e.g., Engineering Team"
-              className="w-full bg-gray-950 border border-gray-800 text-white rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              autoFocus
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">
-              Description (Optional)
-            </label>
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="What is this workspace for?"
-              className="w-full bg-gray-950 border border-gray-800 text-white rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 min-h-[100px]"
-            />
-          </div>
-          
-          <div className="flex justify-end gap-3 pt-4 border-t border-gray-800">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-sm font-medium text-gray-300 hover:text-white transition-colors"
-              disabled={isSubmitting}
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
-            >
-              {isSubmitting ? 'Creating...' : 'Create Workspace'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+        <Input
+          label="Workspace Name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="e.g., Engineering Team"
+          required
+          autoFocus
+        />
+
+        <Textarea
+          label="Description"
+          hint="Optional — describe what this workspace is for."
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder="What is this workspace for?"
+          rows={3}
+        />
+      </form>
+    </Modal>
   );
 };

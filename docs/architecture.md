@@ -1,150 +1,461 @@
 # Stargate Architecture
 
-This document describes the high-level system design, data flow, and microservice responsibilities of the Stargate platform.
+> Deep-dive technical architecture for the Stargate workflow orchestration platform.
 
 ---
 
-## High-Level Architecture
+## Table of Contents
 
-Stargate is built on a scalable, decoupled architecture where the API Gateway and the Execution Worker operate as independent microservices. They communicate asynchronously via a Redis-backed message queue, while sharing state through a centralized PostgreSQL database.
+- [Overview](#overview)
+- [Service Topology](#service-topology)
+- [Frontend Architecture](#frontend-architecture)
+- [API Gateway Architecture](#api-gateway-architecture)
+- [Worker Architecture](#worker-architecture)
+- [Queue Architecture (Redis + BullMQ)](#queue-architecture-redis--bullmq)
+- [Database Architecture](#database-architecture)
+- [Network & Container Topology](#network--container-topology)
+- [Key Architectural Decisions](#key-architectural-decisions)
+
+---
+
+## Overview
+
+Stargate is a **polyglot microservice monorepo** orchestrated with Turborepo and containerized via Docker Compose. The system separates concerns across three distinct runtime processes:
+
+| Service | Role | Technology |
+|---------|------|-----------|
+| `apps/api` | HTTP gateway, auth, CRUD, job dispatch | Express.js, TypeScript, Prisma |
+| `apps/worker` | Async workflow execution | Node.js, BullMQ, jexl |
+| `apps/web` | Interactive visual frontend | React 18, Vite, React Flow, Zustand |
+
+These services communicate via:
+- **REST API** (Client ↔ API)
+- **Redis Queue** (API → Worker via BullMQ)
+- **PostgreSQL** (API ↔ DB, Worker ↔ DB)
+
+The key invariant: **the API Gateway never executes workflow logic synchronously**. All execution is delegated to the Worker via the queue.
+
+---
+
+## Service Topology
 
 ```mermaid
-graph TD
-    Client["Client (React SPA)"] -->|REST| API["API Gateway (Express)"]
+graph TB
+    Browser["Browser (React SPA)"] -->|REST / JWT| API["API Gateway\n:3000"]
     
-    subgraph Core
+    subgraph "Core Runtime"
         API
-        Worker["Worker Service (Node.js)"]
+        Worker["Execution Worker\n(Headless)"]
+        Scheduler["Cron Scheduler\n(in-process, API)"]
     end
     
-    subgraph Data Layer
-        DB[(PostgreSQL)]
-        Redis[(Redis)]
+    subgraph "Persistence Layer"
+        DB[("PostgreSQL :5432\n9 models, 3 enums")]
+        Redis[("Redis :6379\nBullMQ Queue")]
     end
     
-    API -->|Read/Write State| DB
-    API -->|Enqueue Job| Redis
-    Worker <-->|Consume & Acknowledge| Redis
-    Worker -->|Update Execution State| DB
+    API -->|"Read/Write state"| DB
+    API -->|"Enqueue job"| Redis
+    Redis -->|"Job consumed"| Worker
+    Worker -->|"Update execution state"| DB
+    Scheduler -->|"Fire cron triggers"| API
+
+    Browser -->|"Served as static files"| Web["Web Container\nnginx :5173"]
+    Web -->|"API calls"| API
 ```
 
 ---
 
 ## Frontend Architecture
-**Tech Stack:** React, TypeScript, Zustand, React Flow, Vite, TailwindCSS
 
-The frontend serves as the presentation layer. It manages the visual canvas state locally using `React Flow` and synchronizes structurally with the backend using debounced REST requests.
+**Stack:** React 18, TypeScript, Vite, Zustand, React Flow, TailwindCSS
+
+The frontend is a **Single Page Application** (SPA) served via nginx in production and Vite's dev server locally. It communicates exclusively with the API Gateway over REST.
 
 ```mermaid
 flowchart LR
-    UI[Components] --> Store[Zustand Store]
-    Store --> API_Lib[API Client / Fetch]
-    API_Lib -.-> API_Gateway[Backend API]
-    
-    ReactFlow[Canvas UI] <--> Store
+    subgraph "UI Layer"
+        Pages["Pages\n(Dashboard, WorkflowDetail,\nLogin, Register)"]
+        Components["Components\n(Nodes, Modals, Panels)"]
+    end
+
+    subgraph "State Layer"
+        AuthStore["authStore\n(JWT, user)"]
+        WorkspaceStore["workspaceStore\n(workspaces, active)"]
+        WorkflowStore["workflowStore\n(workflow, nodes, edges)"]
+        ExecutionStore["executionStore\n(executions, polling)"]
+    end
+
+    subgraph "Data Layer"
+        APIClient["API Client\n(fetch wrapper)"]
+        ReactFlow["React Flow\n(canvas state, layout)"]
+    end
+
+    Pages --> Components
+    Pages --> AuthStore
+    Pages --> WorkspaceStore
+    Pages --> WorkflowStore
+    Pages --> ExecutionStore
+
+    AuthStore --> APIClient
+    WorkspaceStore --> APIClient
+    WorkflowStore --> APIClient
+    ExecutionStore --> APIClient
+
+    Components --> ReactFlow
+    ReactFlow --> WorkflowStore
 ```
-- **Zustand** is utilized for lightweight global state (Auth, Workspaces, Workflows, Execution Polling).
-- **React Flow** manages node positions, edge connections, and canvas pan/zoom interactions.
+
+### State Architecture
+- **Zustand** stores are the single source of truth for all application state.
+- Canvas-related state (node positions, edges in flight) is managed inside React Flow's internal state, and synced to the backend via debounced REST calls on change.
+- JWT refresh token rotation is handled automatically in the API client layer.
+
+### Pages
+| Page | Purpose |
+|------|---------|
+| `Login` / `Register` | Authentication with JWT token storage |
+| `Dashboard` | Workspace management, workflow list, metrics, execution history |
+| `WorkflowDetail` | Full React Flow canvas, node config sidebar, trigger management, execution panel |
 
 ---
 
-## Backend Architecture (API Gateway)
-**Tech Stack:** Express.js, TypeScript, Prisma ORM, Zod
+## API Gateway Architecture
 
-The API Gateway is responsible for CRUD operations, authentication, webhook ingestion, and workflow validation. It does *not* execute workflows synchronously.
+**Stack:** Express.js, TypeScript, Prisma ORM, Zod, BullMQ, Helmet, Morgan
 
-**Key Responsibilities:**
-1. Validating acyclic graphs (Topological Sort).
-2. Authenticating users via JWT and RBAC.
-3. Managing Prisma schema mappings.
-4. Enqueueing verified workflow executions to BullMQ.
+The API Gateway is a stateless REST service responsible for:
+1. **Authentication** — JWT validation, refresh token management
+2. **Authorization** — Per-workspace RBAC enforcement
+3. **CRUD** — Full lifecycle management of Workspaces, Workflows, Nodes, Edges, Triggers
+4. **Graph Validation** — Cycle detection via topological sort before job dispatch
+5. **Job Dispatch** — Creating `WorkflowExecution` records and enqueuing to BullMQ
+6. **Webhook Ingestion** — Public endpoint for inbound trigger payloads
+7. **Observability** — Metrics aggregation and system health endpoints
+
+### Route Map
+
+```
+POST   /api/v1/auth/register
+POST   /api/v1/auth/login
+POST   /api/v1/auth/refresh
+POST   /api/v1/auth/logout
+GET    /api/v1/users/me
+
+POST   /api/v1/workspaces
+GET    /api/v1/workspaces
+GET    /api/v1/workspaces/:id
+PUT    /api/v1/workspaces/:id
+DELETE /api/v1/workspaces/:id
+
+POST   /api/v1/workflows/workspace/:workspaceId
+GET    /api/v1/workflows/workspace/:workspaceId
+GET    /api/v1/workflows/:id
+PUT    /api/v1/workflows/:id
+DELETE /api/v1/workflows/:id
+GET    /api/v1/workflows/:id/graph
+GET    /api/v1/workflows/:id/export
+POST   /api/v1/workflows/workspace/:workspaceId/import
+
+POST   /api/v1/nodes/workflow/:workflowId
+PUT    /api/v1/nodes/:id
+PUT    /api/v1/nodes/:id/position
+DELETE /api/v1/nodes/:id
+
+POST   /api/v1/edges/workflow/:workflowId
+DELETE /api/v1/edges/:id
+
+POST   /api/v1/workflows/:id/executions      (trigger execution)
+GET    /api/v1/workflows/:id/executions      (list executions)
+GET    /api/v1/executions/:executionId        (get execution detail)
+
+POST   /api/v1/workflows/:workflowId/triggers
+GET    /api/v1/workflows/:workflowId/triggers
+PUT    /api/v1/triggers/:id
+DELETE /api/v1/triggers/:id
+
+POST   /api/v1/webhooks/:webhookPath          (inbound webhook)
+
+GET    /api/v1/system/metrics/workspace/:workspaceId
+GET    /api/v1/system/health
+
+GET    /health                                 (root health check)
+```
 
 ---
 
-## Worker Architecture (Execution Engine)
-**Tech Stack:** BullMQ, Node.js, `jexl`, `lodash`
+## Worker Architecture
 
-The Worker is a headless background process that constantly polls Redis for jobs.
+**Stack:** Node.js, BullMQ, Prisma, jexl, lodash
 
-**Key Responsibilities:**
-1. Hydrating workflow graphs from PostgreSQL.
-2. Managing the `ExecutionContext` (Variable Interpolation).
-3. Routing execution based on edge conditionals.
-4. Executing raw HTTP network requests safely.
-5. Updating `WorkflowExecution` and `NodeExecution` statuses in real-time.
+The Worker is a **headless background process** — no HTTP server, no UI. It connects to Redis and listens for jobs on the `workflow-execution` queue.
 
----
-
-## Redis / BullMQ Data Flow
+### Job Processing Pipeline
 
 ```mermaid
 sequenceDiagram
-    participant API as API Gateway
-    participant Redis as Redis (BullMQ)
-    participant Worker as Execution Worker
+    participant Q as Redis (BullMQ)
+    participant W as Worker
     participant DB as PostgreSQL
+    participant EXT as External APIs
+
+    Q->>W: Job: {workflowId, executionId}
+    W->>DB: UPDATE execution SET status='RUNNING'
+    W->>DB: SELECT workflow WITH nodes, edges
+    W->>W: Topological sort (Kahn's Algorithm)
     
-    API->>DB: 1. Create WorkflowExecution (PENDING)
-    API->>Redis: 2. Job.add(executionId)
-    Redis-->>Worker: 3. Job Picked Up
-    Worker->>DB: 4. Mark WorkflowExecution (RUNNING)
-    
-    loop Per Node
-        Worker->>Worker: 5. Evaluate Variables & Conditions
-        Worker->>ExternalAPI: 6. Execute Node Task
-        Worker->>DB: 7. Log NodeExecution (SUCCESS/FAILED)
+    loop For each node in topological order
+        W->>DB: CREATE nodeExecution (PENDING)
+        W->>W: Check shouldExecute (incoming edges)
+        
+        alt Node should execute
+            W->>W: Resolve variables ({{nodeId.body.x}})
+            alt HTTP Node
+                W->>W: validateSSRF(url)
+                W->>EXT: fetch(url, method, headers, body)
+                EXT-->>W: Response
+            else IF Node
+                W->>W: jexl.eval(expression, context)
+            end
+            W->>W: Evaluate outgoing edge conditions
+            W->>DB: UPDATE nodeExecution (SUCCESS + output)
+        else Node should skip
+            W->>DB: UPDATE nodeExecution (SKIPPED)
+        end
     end
     
-    Worker->>DB: 8. Mark WorkflowExecution (SUCCESS)
-    Worker->>Redis: 9. Job.completed()
+    W->>DB: UPDATE execution (SUCCESS | FAILED + durationMs)
+    W->>Q: Job.complete()
 ```
+
+### Reliability Features
+- **3 automatic retries** with exponential backoff (BullMQ native)
+- **5-minute global timeout** via `Promise.race` wrapping the entire execution
+- **Graceful failure** — failed nodes don't crash the worker; error is persisted and other independent branches continue
 
 ---
 
-## Branching Logic & Variable Resolution Flow
-
-### Conditional Branching (DAG Routing)
-Workflows are represented as Directed Acyclic Graphs (DAGs). When a node completes, the worker evaluates outgoing edges.
-If the edge contains a `condition` (e.g., `status === 200`), the worker evaluates it against the Node's output.
-- **TRUE:** The target node is added to the execution queue.
-- **FALSE:** The target node, and all subsequent children exclusively attached to it, are marked `SKIPPED`.
-
-### Variable Resolution
-Before evaluating conditions or executing an HTTP node, the worker runs the `VariableResolver`.
-It scans the node's `config` (URLs, headers, JSON body) for interpolation markers: `{{node123.body.userId}}`.
-It replaces these tokens natively by querying the hydrated `ExecutionContext` (a Map of all previously completed node outputs in the current workflow instance).
+## Queue Architecture (Redis + BullMQ)
 
 ```mermaid
-graph LR
-    Context["ExecutionContext (Map)"] -->|Injects| Resolver["Variable Resolver"]
-    Config["Raw Config: {{id}}"] --> Resolver
-    Resolver -->|Produces| Exec["Execution Engine: 123"]
+flowchart LR
+    API["API Gateway"] -->|"Queue.add(jobData)"| BullMQ["BullMQ\n(workflow-execution)"]
+    
+    subgraph "Redis"
+        BullMQ
+        WaitList["Wait List"]
+        ActiveList["Active List"]
+        CompletedSet["Completed Set"]
+        FailedSet["Failed Set"]
+    end
+    
+    BullMQ --> WaitList
+    WaitList -->|"Worker picks up"| ActiveList
+    ActiveList -->|"Job complete"| CompletedSet
+    ActiveList -->|"Job failed (3x retry)"| FailedSet
+    
+    ActiveList -->|"Process"| Worker["Execution Worker"]
 ```
+
+### BullMQ Configuration
+| Setting | Value | Purpose |
+|---------|-------|---------|
+| Queue name | `workflow-execution` | Single global queue for all executions |
+| Max retries | 3 | Resilience against transient errors |
+| Retry strategy | Exponential backoff | Avoids thundering herd on dependency recovery |
+| Job data | `{workflowId, executionId, triggerExecutionId?}` | Minimal payload; worker fetches full graph from DB |
 
 ---
 
-## Database Schema (Abridged)
+## Database Architecture
+
+**Stack:** PostgreSQL 15, Prisma ORM
+
+### Full Entity-Relationship Diagram
 
 ```mermaid
 erDiagram
-    WORKFLOW ||--o{ NODE : contains
-    WORKFLOW ||--o{ EDGE : contains
-    WORKFLOW ||--o{ WORKFLOW_EXECUTION : has
-    WORKFLOW_EXECUTION ||--o{ NODE_EXECUTION : logs
-    
-    WORKFLOW {
-        string id
+    User {
+        string id PK
+        string email UK
+        string passwordHash
         string name
+        DateTime createdAt
+        DateTime updatedAt
+    }
+    
+    RefreshToken {
+        string id PK
+        string hashedToken UK
+        string userId FK
+        boolean revoked
+        DateTime expiresAt
+    }
+    
+    Workspace {
+        string id PK
+        string name
+        string description
+        string createdById FK
+        DateTime createdAt
+        DateTime updatedAt
+    }
+    
+    WorkspaceMember {
+        string id PK
+        string userId FK
+        string workspaceId FK
+        string role
+    }
+    
+    Workflow {
+        string id PK
+        string name
+        string description
+        string workspaceId FK
+        string createdById FK
+        WorkflowStatus status
+        int version
         boolean isActive
+        DateTime createdAt
+        DateTime updatedAt
     }
-    NODE {
-        string id
+    
+    Node {
+        string id PK
+        string workflowId FK
         string type
+        string label
+        float positionX
+        float positionY
         json config
+        DateTime createdAt
     }
-    EDGE {
-        string sourceNodeId
-        string targetNodeId
+    
+    Edge {
+        string id PK
+        string workflowId FK
+        string sourceNodeId FK
+        string targetNodeId FK
         string condition
     }
+    
+    WorkflowExecution {
+        string id PK
+        string workflowId FK
+        string startedById FK
+        ExecutionStatus status
+        string errorMessage
+        DateTime startedAt
+        DateTime completedAt
+        int durationMs
+        int retryCount
+    }
+    
+    NodeExecution {
+        string id PK
+        string workflowExecutionId FK
+        string nodeId FK
+        ExecutionStatus status
+        json input
+        json output
+        string error
+        DateTime startedAt
+        DateTime completedAt
+        int durationMs
+    }
+    
+    WorkflowTrigger {
+        string id PK
+        string workflowId FK
+        TriggerType type
+        string webhookPath
+        string cron
+        boolean enabled
+    }
+    
+    TriggerExecution {
+        string id PK
+        string triggerId FK
+        ExecutionStatus status
+        DateTime startedAt
+        DateTime finishedAt
+    }
+
+    User ||--o{ RefreshToken : "has"
+    User ||--o{ WorkspaceMember : "member via"
+    User ||--o{ Workspace : "creates"
+    User ||--o{ Workflow : "creates"
+    User ||--o{ WorkflowExecution : "starts"
+    Workspace ||--o{ WorkspaceMember : "has"
+    Workspace ||--o{ Workflow : "contains"
+    Workflow ||--o{ Node : "has"
+    Workflow ||--o{ Edge : "has"
+    Workflow ||--o{ WorkflowExecution : "runs as"
+    Workflow ||--o{ WorkflowTrigger : "triggered by"
+    WorkflowExecution ||--o{ NodeExecution : "logs"
+    WorkflowTrigger ||--o{ TriggerExecution : "records"
+    Node ||--o{ Edge : "source"
+    Node ||--o{ Edge : "target"
+    Node ||--o{ NodeExecution : "executed as"
 ```
+
+### Enum Definitions
+
+**`ExecutionStatus`:** `QUEUED` | `PENDING` | `RUNNING` | `SUCCESS` | `FAILED` | `SKIPPED`
+
+**`TriggerType`:** `MANUAL` | `WEBHOOK` | `SCHEDULE`
+
+**`WorkflowStatus`:** `DRAFT` | `ACTIVE`
+
+---
+
+## Network & Container Topology
+
+```mermaid
+graph LR
+    subgraph "Host Machine"
+        Browser[":5173 (Browser)"]
+    end
+
+    subgraph "Docker Network (stargate_default)"
+        Web["web:80\n(nginx)"]
+        API["api:3000\n(Express)"]
+        Worker["worker\n(headless)"]
+        Postgres["postgres:5432\n(PostgreSQL 15)"]
+        Redis["redis:6379\n(Redis Alpine)"]
+    end
+
+    Browser -->|"5173→80"| Web
+    Web -->|"API calls"| API
+    Browser -->|"3000→3000"| API
+    API -->|"Prisma queries"| Postgres
+    API -->|"Queue dispatch"| Redis
+    Worker -->|"Prisma queries"| Postgres
+    Worker -->|"Job consumption"| Redis
+```
+
+### Port Mapping
+| Service | Host Port | Container Port |
+|---------|-----------|---------------|
+| Web (nginx) | 5173 | 80 |
+| API (Express) | 3000 | 3000 |
+| PostgreSQL | 5433 | 5432 |
+| Redis | 6379 | 6379 |
+| Worker | — | — (no HTTP exposure) |
+
+---
+
+## Key Architectural Decisions
+
+### Why Not WebSockets for Execution Updates?
+The current implementation uses **polling** from the frontend to check execution status. This was a deliberate simplicity trade-off. WebSockets would require a pub/sub layer (Redis Pub/Sub or Socket.io with Redis adapter) to broadcast from Worker to the API and then to connected clients — adding significant complexity. Polling at 2-second intervals is sufficient for the current use case.
+
+### Why a Single Global Queue vs. Per-Workspace Queues?
+A single `workflow-execution` queue was chosen for simplicity. The known trade-off is **noisy-neighbor behavior**: a workspace running many large workflows could starve others. Per-workspace queues with rate limiting is the planned production evolution.
+
+### Why Prisma ORM?
+Prisma provides compile-time type safety for all database queries, automatic migration management, and a schema-as-code model that makes the data model immediately readable to any engineer. The trade-off is slightly less control over raw SQL for complex queries — acceptable given the current query patterns.
+
+### Why Turborepo?
+The monorepo structure allows `@stargate/database` and `@stargate/shared` to be imported directly by both the API and Worker with proper TypeScript resolution, avoiding code duplication and ensuring type consistency across all Prisma queries.

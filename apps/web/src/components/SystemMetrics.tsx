@@ -1,9 +1,67 @@
 import React, { useEffect, useState } from 'react';
-import { Activity, Clock, Server, CheckCircle, AlertTriangle } from 'lucide-react';
+import {
+  Activity, CheckCircle2, Clock, XCircle,
+  Server, AlertTriangle, CheckCircle, TrendingUp
+} from 'lucide-react';
 import { apiFetch } from '../lib/api';
+import { Badge } from './ui/Badge';
+import { Skeleton } from './ui/Skeleton';
+import { cn } from '../lib/utils';
+
+// ─── Stat Card ────────────────────────────────────────────────────────────────
+
+interface StatCardProps {
+  label:      string;
+  value:      string | number;
+  icon:       React.ElementType;
+  color?:     'default' | 'success' | 'danger' | 'info' | 'warning';
+  suffix?:    string;
+}
+
+const colorMap = {
+  default: { icon: 'text-zinc-400', value: 'text-zinc-100' },
+  success: { icon: 'text-success',  value: 'text-success'  },
+  danger:  { icon: 'text-danger',   value: 'text-danger'   },
+  info:    { icon: 'text-info',     value: 'text-info'     },
+  warning: { icon: 'text-warning',  value: 'text-warning'  },
+};
+
+const StatCard: React.FC<StatCardProps> = ({
+  label, value, icon: Icon, color = 'default', suffix,
+}) => {
+  const colors = colorMap[color];
+  return (
+    <div className={cn(
+      'bg-zinc-950 border border-zinc-800 rounded-xl p-4 flex flex-col gap-3',
+      'hover:border-zinc-700 transition-colors duration-standard',
+    )}>
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-medium text-zinc-500 uppercase tracking-wider">{label}</span>
+        <div className={cn('w-7 h-7 rounded-lg flex items-center justify-center bg-zinc-900 border border-zinc-800', colors.icon)}>
+          <Icon className="w-3.5 h-3.5" />
+        </div>
+      </div>
+      <div className={cn('text-2xl font-bold tabular-nums tracking-tight', colors.value)}>
+        {value}
+        {suffix && <span className="text-sm font-medium ml-1 text-zinc-500">{suffix}</span>}
+      </div>
+    </div>
+  );
+};
+
+// ─── Queue Row ────────────────────────────────────────────────────────────────
+
+const QueueRow: React.FC<{ label: string; value: number; color: string }> = ({ label, value, color }) => (
+  <div className="flex items-center justify-between py-2 border-b border-zinc-800/60 last:border-0">
+    <span className="text-sm text-zinc-400">{label}</span>
+    <span className={cn('text-sm font-semibold tabular-nums', color)}>{value}</span>
+  </div>
+);
+
+// ─── Main Component ───────────────────────────────────────────────────────────
 
 export const SystemMetrics: React.FC = () => {
-  const [health, setHealth] = useState<any>(null);
+  const [health,  setHealth]  = useState<any>(null);
   const [metrics, setMetrics] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
@@ -27,110 +85,120 @@ export const SystemMetrics: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
+  // ─── Loading state ─────────────────────────────────────────────────────────
   if (loading || !metrics || !health) {
     return (
-      <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 mt-8">
-        <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-          <Activity className="w-5 h-5 text-indigo-400" />
-          System Overview
-        </h3>
-        <div className="animate-pulse space-y-4">
-          <div className="h-20 bg-gray-800 rounded-lg"></div>
-          <div className="h-20 bg-gray-800 rounded-lg"></div>
+      <div className="mt-6">
+        <div className="flex items-center gap-2 mb-5">
+          <Activity className="w-4 h-4 text-brand-400" />
+          <h3 className="text-sm font-semibold text-zinc-300 uppercase tracking-wider">System Overview</h3>
         </div>
+        <Skeleton.MetricsDashboard />
       </div>
     );
   }
 
   const { workflowMetrics, queueMetrics, errorAnalytics } = metrics;
 
+  const successRateFormatted = `${workflowMetrics.successRate.toFixed(1)}%`;
+  const avgDurationFormatted = workflowMetrics.averageDuration >= 1000
+    ? `${(workflowMetrics.averageDuration / 1000).toFixed(2)}s`
+    : `${Math.round(workflowMetrics.averageDuration)}ms`;
+
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 mt-8">
-      <div className="flex items-center justify-between mb-6">
-        <h3 className="text-lg font-semibold flex items-center gap-2">
-          <Activity className="w-5 h-5 text-indigo-400" />
-          System Overview
-        </h3>
-        <div className="flex gap-4 text-sm">
+    <div className="mt-6 animate-fade-in">
+      {/* Section header */}
+      <div className="flex items-center justify-between mb-5">
+        <div className="flex items-center gap-2">
+          <Activity className="w-4 h-4 text-brand-400" />
+          <h3 className="text-sm font-semibold text-zinc-300 uppercase tracking-wider">
+            System Overview
+          </h3>
+        </div>
+        <span className="text-[11px] text-zinc-600">Live · refreshes every 10s</span>
+
+        {/* Health status badges */}
+        <div className="flex items-center gap-2">
           {Object.entries(health).map(([key, value]) => (
-            <div key={key} className="flex items-center gap-1.5 capitalize">
-              <div className={`w-2 h-2 rounded-full ${value === 'healthy' ? 'bg-green-500' : 'bg-red-500'}`}></div>
-              <span className="text-gray-400">{key}</span>
-            </div>
+            <Badge
+              key={key}
+              variant={value === 'healthy' ? 'success' : 'danger'}
+              size="sm"
+              dot
+            >
+              {key}
+            </Badge>
           ))}
         </div>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        {/* Workflow Metrics */}
-        <div className="bg-gray-950 p-4 rounded-lg border border-gray-800">
-          <div className="text-gray-400 text-xs uppercase tracking-wider mb-1">Total Executions</div>
-          <div className="text-2xl font-semibold">{workflowMetrics.totalExecutions}</div>
-        </div>
-        <div className="bg-gray-950 p-4 rounded-lg border border-gray-800">
-          <div className="text-gray-400 text-xs uppercase tracking-wider mb-1">Success Rate</div>
-          <div className="text-2xl font-semibold text-green-400">
-            {workflowMetrics.successRate.toFixed(1)}%
-          </div>
-        </div>
-        <div className="bg-gray-950 p-4 rounded-lg border border-gray-800">
-          <div className="text-gray-400 text-xs uppercase tracking-wider mb-1">Avg Duration</div>
-          <div className="text-2xl font-semibold flex items-center gap-2">
-            <Clock className="w-4 h-4 text-gray-500" />
-            {Math.round(workflowMetrics.averageDuration)}ms
-          </div>
-        </div>
-        <div className="bg-gray-950 p-4 rounded-lg border border-gray-800">
-          <div className="text-gray-400 text-xs uppercase tracking-wider mb-1">Failed</div>
-          <div className="text-2xl font-semibold text-red-400">{workflowMetrics.failedExecutions}</div>
-        </div>
+      {/* 4-column stat grid */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
+        <StatCard
+          label="Total Executions"
+          value={workflowMetrics.totalExecutions}
+          icon={TrendingUp}
+          color="default"
+        />
+        <StatCard
+          label="Success Rate"
+          value={successRateFormatted}
+          icon={CheckCircle2}
+          color={workflowMetrics.successRate >= 90 ? 'success' : workflowMetrics.successRate >= 70 ? 'warning' : 'danger'}
+        />
+        <StatCard
+          label="Avg Duration"
+          value={avgDurationFormatted}
+          icon={Clock}
+          color="info"
+        />
+        <StatCard
+          label="Failed"
+          value={workflowMetrics.failedExecutions}
+          icon={XCircle}
+          color={workflowMetrics.failedExecutions > 0 ? 'danger' : 'default'}
+        />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Queue Metrics */}
-        <div className="bg-gray-950 p-5 rounded-lg border border-gray-800">
-          <h4 className="text-sm font-medium text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-2">
-            <Server className="w-4 h-4" /> Queue Health
-          </h4>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <div className="text-2xl font-semibold text-blue-400">{queueMetrics.active}</div>
-              <div className="text-xs text-gray-500">Active Jobs</div>
-            </div>
-            <div>
-              <div className="text-2xl font-semibold text-yellow-400">{queueMetrics.waiting}</div>
-              <div className="text-xs text-gray-500">Waiting Jobs</div>
-            </div>
-            <div>
-              <div className="text-2xl font-semibold text-green-400">{queueMetrics.completed}</div>
-              <div className="text-xs text-gray-500">Completed Jobs</div>
-            </div>
-            <div>
-              <div className="text-2xl font-semibold text-red-400">{queueMetrics.failed}</div>
-              <div className="text-xs text-gray-500">Failed Jobs</div>
-            </div>
+      {/* 2-column detail panels */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Queue Health */}
+        <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <Server className="w-4 h-4 text-zinc-500" />
+            <h4 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
+              Queue Health
+            </h4>
+          </div>
+          <div>
+            <QueueRow label="Active Jobs"    value={queueMetrics.active}    color="text-info" />
+            <QueueRow label="Waiting Jobs"   value={queueMetrics.waiting}   color="text-warning" />
+            <QueueRow label="Completed Jobs" value={queueMetrics.completed} color="text-success" />
+            <QueueRow label="Failed Jobs"    value={queueMetrics.failed}    color="text-danger" />
           </div>
         </div>
 
-        {/* Error Analytics */}
-        <div className="bg-gray-950 p-5 rounded-lg border border-gray-800">
-          <h4 className="text-sm font-medium text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4" /> Failure Analytics
-          </h4>
+        {/* Failure Analytics */}
+        <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <AlertTriangle className="w-4 h-4 text-zinc-500" />
+            <h4 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
+              Failure Analytics
+            </h4>
+          </div>
           {errorAnalytics && errorAnalytics.length > 0 ? (
-            <div className="space-y-3">
+            <div>
               {errorAnalytics.map((err: any) => (
-                <div key={err.category} className="flex items-center justify-between">
-                  <span className="text-sm text-gray-300">{err.category}</span>
-                  <span className="text-sm font-semibold bg-red-500/10 text-red-400 px-2 py-0.5 rounded">
-                    {err.count}
-                  </span>
+                <div key={err.category} className="flex items-center justify-between py-2 border-b border-zinc-800/60 last:border-0">
+                  <span className="text-sm text-zinc-400 truncate">{err.category}</span>
+                  <Badge variant="danger" size="sm">{err.count}</Badge>
                 </div>
               ))}
             </div>
           ) : (
-            <div className="text-sm text-gray-500 flex items-center gap-2 mt-4">
-              <CheckCircle className="w-4 h-4 text-green-500" /> No recorded failures.
+            <div className="flex items-center gap-2 mt-2 text-sm text-zinc-500">
+              <CheckCircle className="w-4 h-4 text-success shrink-0" />
+              No recorded failures
             </div>
           )}
         </div>

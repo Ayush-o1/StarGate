@@ -2,11 +2,191 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-  margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+/* ─── Google Fonts are loaded via index.html <link> tags ─────────────────── */
+
+@layer base {
+  :root {
+    /* Surface hierarchy */
+    --color-surface-base:           #09090b;
+    --color-surface-elevated:       #18181b;
+    --color-surface-overlay:        #27272a;
+    --color-surface-border:         #3f3f46;
+    --color-surface-border-subtle:  #27272a;
+
+    /* Text hierarchy */
+    --color-text-primary:   #fafafa;
+    --color-text-secondary: #a1a1aa;
+    --color-text-muted:     #71717a;
+    --color-text-disabled:  #52525b;
+
+    /* Brand */
+    --color-brand:       #6366f1;
+    --color-brand-hover: #4f46e5;
+  }
+
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    /* Smooth font rendering everywhere */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-synthesis: none;
+  }
+
+  body {
+    margin: 0;
+    background-color: var(--color-surface-base);
+    color: var(--color-text-primary);
+    font-family: 'Inter', ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    /* Inter optical sizing and refined letter alternates */
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+    font-optical-sizing: auto;
+  }
+
+  /* Tabular numerals for metric displays — apply to number containers */
+  .tabular-nums {
+    font-feature-settings: 'tnum', 'ss01';
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ─── Selection ────────────────────────────────────────────────────────── */
+  ::selection {
+    background-color: rgb(99 102 241 / 0.25);
+    color: #fafafa;
+  }
+
+  /* ─── Focus ring base — use focus-visible so mouse clicks don't show ring ─ */
+  :focus {
+    outline: none;
+  }
+
+  :focus-visible {
+    outline: 2px solid rgb(99 102 241 / 0.7);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  /* ─── Custom scrollbar (WebKit) ─────────────────────────────────────────── */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background-color: #3f3f46; /* zinc-700 */
+    border-radius: 9999px;
+    border: 0;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: #52525b; /* zinc-600 */
+  }
+
+  /* ─── Custom scrollbar (Firefox) ────────────────────────────────────────── */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #3f3f46 transparent;
+  }
+
+  /* ─── ReactFlow overrides ────────────────────────────────────────────────── */
+  .react-flow__attribution {
+    display: none !important;
+  }
+
+  .react-flow__handle {
+    transition: background-color 150ms ease;
+  }
+
+  /* Prevent ReactFlow from overriding our selection color */
+  .react-flow__node.selected > div {
+    border-color: #818cf8 !important; /* brand-400 */
+  }
+
+  /* ─── Reduced motion — honour accessibility preference ─────────────────── */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+/* ─── Utility: body scroll lock (used by Modal) ─────────────────────────── */
+@layer utilities {
+  .scroll-locked {
+    overflow: hidden;
+  }
+
+  /* Preserve stagger animation end-state — used by WorkflowCard list */
+  .fill-mode-both {
+    animation-fill-mode: both;
+  }
+
+  /* Thin scrollbar for code blocks */
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: #3f3f46 transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar { width: 4px; height: 4px; }
+  .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
+  .scrollbar-thin::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 4px; }
+
+}
+
+/* ─── ReactFlow Canvas Overrides ──────────────────────────────────────────── */
+
+/* Controls panel */
+.react-flow__controls {
+  background:    #18181b !important;
+  border:        1px solid #27272a !important;
+  border-radius: 10px !important;
+  box-shadow:    none !important;
+  overflow:      hidden;
+}
+
+.react-flow__controls-button {
+  background:   #18181b !important;
+  border-bottom: 1px solid #27272a !important;
+  color:         #a1a1aa !important;
+  transition:   background 150ms, color 150ms;
+}
+
+.react-flow__controls-button:hover {
+  background: #27272a !important;
+  color:      #ffffff !important;
+}
+
+.react-flow__controls-button svg {
+  fill: currentColor;
+}
+
+/* MiniMap */
+.react-flow__minimap {
+  border-radius: 10px !important;
+  overflow:      hidden;
+}
+
+/* Edge path */
+.react-flow__edge-path {
+  stroke: #6366f1;
+}
+
+/* Node selection ring */
+.react-flow__node.selected > div {
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.35) !important;
 }
