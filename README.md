@@ -91,6 +91,8 @@ Every node execution records a `startedAt`, `completedAt`, and `durationMs` in P
 | IF conditional nodes | Boolean expression evaluation using `jexl` |
 | Variable interpolation | `{{nodeId.body.field}}` syntax resolves prior outputs into downstream configs |
 | Edge conditions | Per-edge expression evaluation for branching |
+| Resizable bottom panel | Drag-to-resize executions/triggers panel, height persisted to `localStorage` |
+| Canvas status bar | Floating node/edge count chip on the canvas |
 
 ### Execution & Queue Architecture
 | Feature | Details |
@@ -113,21 +115,24 @@ Every node execution records a `startedAt`, `completedAt`, and `durationMs` in P
 |---------|---------|
 | JWT auth | Short-lived access tokens + persisted refresh tokens |
 | RBAC | Per-workspace role enforcement (`OWNER` / `MEMBER`) |
-| SSRF protection | DNS-resolved IP blocking of loopback, private ranges, and cloud metadata endpoints |
+| SSRF protection | DNS-resolved IP blocking of loopback, private RFC-1918 ranges, and cloud metadata endpoints |
 | Payload limits | 1MB Express middleware limit on all inbound JSON |
 | Cycle detection | Topological sort validation rejects cyclic graphs before execution |
 
-### Observability
+### Observability & Dashboard
 | Feature | Details |
 |---------|---------|
-| Execution history | Full timeline of all runs per workflow |
-| Node-level traces | Input, output, error, and duration per node per execution |
+| KPI strip | 4 live metrics — total workflows, active count, execution count, success rate |
+| Activity feed | Cross-workflow recent execution feed, grouped by Today/Yesterday/Older |
+| Execution history | Full timeline of all runs per workflow with filter pills (All/Success/Failed/Running) |
+| Execution summary | "12 total · 10 ✓ · 2 ✗" header in the executions panel |
+| Node-level traces | Input, output, error, and duration per node per execution with copy buttons |
 | System health endpoint | `/health` checks API, Worker, PostgreSQL, and Redis simultaneously |
-| Workspace metrics | Success rate, total executions, average duration, failure count |
 
 ### Developer Experience
 | Feature | Details |
 |---------|---------|
+| Command palette | `⌘K` fuzzy search across workflows and actions, keyboard-navigable |
 | Import/Export | Full workflow serialization to JSON with UUID remapping on import |
 | Monorepo | Turborepo with shared `@stargate/database`, `@stargate/shared`, `@stargate/config` packages |
 | Type safety | End-to-end TypeScript with shared Zod schemas |
@@ -233,13 +238,13 @@ The Worker maintains an `ExecutionContext` — a `Map<nodeId, nodeOutput>` that 
 After each node completes, outgoing edges are evaluated. If an edge has a `condition` expression (e.g., `response.status === 200`), it's evaluated by `jexl` against the current execution context. Edges that fail are set to `false`; their target nodes — and all descendants exclusively downstream of them — are marked `SKIPPED` without executing.
 
 ### SSRF Protection
-The worker validates every HTTP node URL before executing. It blocks:
-- Known loopback addresses (`127.0.0.1`, `0.0.0.0`)
-- Cloud metadata endpoints (`169.254.169.254`)
+The worker validates every HTTP node URL before executing. It resolves DNS and blocks:
+- Known loopback addresses (`127.0.0.1`, `0.0.0.0`, `::1`)
+- Cloud metadata endpoint (`169.254.169.254`)
 - Internal hostnames (`localhost`, `host.docker.internal`)
-- Private IP ranges via DNS resolution (`10.x`, `172.x`, `192.168.x`)
+- Private IP ranges via CIDR check: `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`
 
-This prevents the worker from being weaponized to scan internal infrastructure.
+Public CDN and cloud IPs (Cloudflare, AWS CloudFront, etc.) are correctly **allowed** — only RFC-1918 private ranges are blocked.
 
 ### Database Schema Overview
 
@@ -272,15 +277,53 @@ erDiagram
 
 <div align="center">
 
-### Authentication
+### Authentication — Split Panel Design
 
-<img src="docs/screenshots/auth-login-page.png" alt="Stargate Login" width="80%" />
+<img src="docs/screenshots/auth-split-panel.png" alt="Stargate Login" width="85%" />
 
-*Clean dark-mode authentication with JWT-based session management*
+*Split-panel auth: feature highlights on the left, glassmorphism form on the right*
+
+---
+
+### Dashboard — KPI Strip + Workflow List + Activity Feed
+
+<img src="docs/screenshots/dashboard-overview.png" alt="Stargate Dashboard" width="85%" />
+
+*4 live KPI metrics with sparkline trends, workflow list with run-history dots, cross-workflow activity feed*
+
+---
+
+### Workflow Editor — Visual DAG Canvas
+
+<img src="docs/screenshots/workflow-editor.png" alt="Workflow Editor" width="85%" />
+
+*React Flow canvas with breadcrumb nav, resizable bottom panel, execution filter pills, canvas status bar, and trigger management*
+
+---
+
+### Command Palette — ⌘K Navigation
+
+<img src="docs/screenshots/command-palette.png" alt="Command Palette" width="85%" />
+
+*Fuzzy search across workflows and actions, full keyboard navigation with ↑↓ Enter Esc*
+
+---
+
+### Execution Detail — Success with Node Timeline
+
+<img src="docs/screenshots/execution-detail-success.png" alt="Execution Detail Success" width="85%" />
+
+*Per-node step timeline with expandable response bodies and copy buttons*
+
+---
+
+### Execution Detail — Failure with SSRF Protection
+
+<img src="docs/screenshots/execution-detail-failed.png" alt="Execution Detail Failed" width="85%" />
+
+*Failed execution showing SSRF protection blocking private IP access, with SKIPPED downstream nodes*
 
 </div>
-
-> **Note:** The application features a full dashboard with workspace management, a visual workflow builder with React Flow canvas, real-time execution monitoring, and system health metrics. Run locally to explore the complete UI.
 
 ---
 
@@ -405,18 +448,25 @@ stargate/
 │   │
 │   ├── web/                    # React 18 + Vite Frontend
 │   │   └── src/
-│   │       ├── components/     # Shared UI components
+│   │       ├── components/     # Reusable UI component library
+│   │       │   ├── ui/         # Base: Button, Badge, Modal, Toast, Tooltip, etc.
+│   │       │   ├── CommandPalette.tsx   # ⌘K fuzzy search palette
+│   │       │   ├── KpiStrip.tsx         # Dashboard metrics strip
+│   │       │   ├── ActivityFeed.tsx     # Cross-workflow execution feed
+│   │       │   ├── CustomNode.tsx       # ReactFlow custom node with status glow
+│   │       │   ├── ResizablePanel.tsx   # Drag-to-resize bottom panel
+│   │       │   └── CanvasStatusBar.tsx  # Node/edge count overlay
 │   │       ├── pages/          # Dashboard, WorkflowDetail, Login, Register
 │   │       ├── store/          # Zustand global state stores
 │   │       └── lib/            # API client, utilities
 │   │
 │   └── worker/                 # BullMQ Worker Service
 │       └── src/
-│           ├── worker.ts           # BullMQ worker initialization & job lifecycle
+│           ├── worker.ts               # BullMQ worker initialization & job lifecycle
 │           ├── execution.processor.ts  # DAG traversal & node execution engine
 │           └── utils/
-│               ├── resolver.ts     # Variable interpolation engine
-│               └── ssrf.ts         # SSRF protection validator
+│               ├── resolver.ts         # Variable interpolation engine
+│               └── ssrf.ts             # SSRF protection validator (CIDR-based)
 │
 ├── packages/
 │   ├── database/               # Prisma ORM & PostgreSQL schema
@@ -426,14 +476,15 @@ stargate/
 │   └── config/                 # Shared ESLint & TypeScript configurations
 │
 ├── docs/                       # Technical documentation
-│   ├── ARCHITECTURE.md         # Deep-dive system architecture
+│   ├── architecture.md         # Deep-dive system architecture
 │   ├── SYSTEM_DESIGN.md        # Design decisions & trade-offs
 │   ├── EXECUTION_ENGINE.md     # Worker & DAG execution internals
 │   ├── OBSERVABILITY.md        # Metrics, health checks, monitoring
 │   ├── SECURITY.md             # Auth, SSRF, RBAC, hardening
 │   ├── FRONTEND.md             # React architecture & state management
 │   ├── CONTRIBUTING.md         # Contribution guidelines
-│   └── RESUME_BULLETS.md       # Resume-ready impact statements
+│   ├── RESUME_BULLETS.md       # Resume-ready impact statements
+│   └── screenshots/            # Application screenshots
 │
 ├── docker-compose.yml          # 5-service container orchestration
 ├── turbo.json                  # Turborepo pipeline configuration
@@ -453,14 +504,17 @@ The Worker implements **Kahn's Algorithm** (BFS-based topological sort) to deter
 ### 3. Recursive DAG Branch Pruning
 When a conditional branch fails, the Worker doesn't just skip the next node — it recursively marks all descendants of that branch as `SKIPPED`. This prevents orphaned nodes from accidentally executing when their required upstream context is missing.
 
-### 4. DNS-Resolved SSRF Protection
-The SSRF validator doesn't just check the URL string — it **resolves DNS** to catch IP address-based bypasses and DNS rebinding attacks. Even if a user constructs a URL with a custom domain that resolves to `127.0.0.1`, the validator catches it at the IP level.
+### 4. DNS-Resolved SSRF Protection with CIDR Checking
+The SSRF validator resolves DNS to get the actual IP, then performs **CIDR range checking** against RFC-1918 private address space (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`) plus loopback. This correctly allows public CDN IPs (Cloudflare, etc.) while still blocking internal infrastructure access — even if a user constructs a URL with a custom domain that resolves to a private IP.
 
 ### 5. Atomic Workspace Creation (Prisma Transactions)
 When a user creates a workspace, the API uses a **Prisma `$transaction`** to atomically create both the `Workspace` record and the `WorkspaceMember` record (with `OWNER` role). If either operation fails, both roll back — preventing orphaned workspaces with no owner.
 
 ### 6. Full Workflow Graph Portability
 The Import/Export system performs **deep-copy serialization** with UUID remapping. Each imported node and edge gets a freshly generated UUID while maintaining internal topology references via an in-memory `Map<oldId, newId>`. Workflows can be shared across environments without ID conflicts.
+
+### 7. Premium UI Engineering
+The frontend was built to production-grade standards with: a command palette (`⌘K`) with fuzzy search and keyboard navigation, drag-to-resize panels with `localStorage` persistence, animated node execution states, per-node execution timeline with expandable response bodies, run-history sparklines and dot indicators, and a split-panel auth layout.
 
 ---
 
@@ -481,7 +535,7 @@ Doing this manually is tedious. Hardcoding it into a script is brittle and impos
 | **Graph algorithms** — How do you determine execution order with dependencies? | Kahn's topological sort algorithm traverses the DAG correctly |
 | **State management** — How do you pass data between steps? | A live `ExecutionContext` map with a templating resolver (`{{node.body.id}}`) |
 | **Conditional logic** — How do you branch based on results? | `jexl` expression engine evaluates conditions; failing branches are recursively pruned |
-| **Security** — What stops users from scanning internal infrastructure? | DNS-resolved SSRF blocking prevents weaponizing the worker |
+| **Security** — What stops users from scanning internal infrastructure? | DNS-resolved SSRF blocking with CIDR range validation prevents weaponizing the worker |
 | **Reliability** — What happens if the server crashes mid-execution? | BullMQ persists jobs in Redis — unfinished work is retried on restart |
 | **Observability** — How do you know what went wrong? | Every node execution writes start time, end time, input, output, and errors to PostgreSQL |
 
@@ -499,7 +553,7 @@ This project demonstrates proficiency in **distributed systems design**, **graph
 | **Role Differentiation** | Viewer, Editor, and Admin permission tiers within workspaces |
 | **Native OAuth Integrations** | Pre-built nodes for Slack, Stripe, GitHub, and Jira using OAuth2 |
 | **Retry Policies (Node-Level)** | Configurable exponential backoff per node type, not just per workflow |
-| **Canvas Performance** | Optimized Zustand subscriptions to reduce micro-render cascades on large graphs |
+| **WebSocket Live Updates** | Replace polling with Redis Pub/Sub → WebSocket for real-time execution status |
 
 ---
 

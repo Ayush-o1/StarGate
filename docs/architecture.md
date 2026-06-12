@@ -114,9 +114,20 @@ flowchart LR
 ### Pages
 | Page | Purpose |
 |------|---------|
-| `Login` / `Register` | Authentication with JWT token storage |
-| `Dashboard` | Workspace management, workflow list, metrics, execution history |
-| `WorkflowDetail` | Full React Flow canvas, node config sidebar, trigger management, execution panel |
+| `Login` / `Register` | Authentication with JWT token storage; split-panel layout (features left, form right) |
+| `Dashboard` | Workspace management, KPI strip, workflow list with run-history dots, activity feed |
+| `WorkflowDetail` | Full React Flow canvas, node config modals, trigger management, resizable execution panel |
+
+### Key Components
+| Component | Purpose |
+|-----------|---------|
+| `CommandPalette` | `⌘K` fuzzy search across workflows and actions, keyboard-navigable |
+| `KpiStrip` | 4 live metrics with SVG sparkline trends |
+| `ActivityFeed` | Cross-workflow execution history grouped by Today/Yesterday/Older |
+| `CustomNode` | ReactFlow node with animated RUNNING glow ring and status badges |
+| `ResizablePanel` | Drag-to-resize bottom panel, height persisted to `localStorage` |
+| `CanvasStatusBar` | Floating node/edge count chip on the canvas |
+| `ExecutionDetailModal` | Per-node timeline, expandable response bodies, copy buttons |
 
 ---
 

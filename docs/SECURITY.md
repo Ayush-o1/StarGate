@@ -135,39 +135,51 @@ Worker executes it → Bypasses external auth, accesses internal endpoints
 The `validateSSRF()` function is called before **every** HTTP node execution:
 
 ```typescript
-const BLOCKED_IPS = [
-  '127.0.0.1',       // IPv4 loopback
-  '0.0.0.0',         // Null address
-  '169.254.169.254', // AWS/GCP/Azure instance metadata service
+import dns from 'dns/promises';
+
+// Exact blocked IPs
+const BLOCKED_IPS = ['127.0.0.1', '0.0.0.0', '::1', '169.254.169.254'];
+
+// Blocked hostnames
+const BLOCKED_HOSTS = ['localhost', 'internal', 'host.docker.internal'];
+
+// CIDR ranges to block (RFC-1918 private address space)
+const PRIVATE_CIDRS = [
+  { base: '10.0.0.0',   prefix: 8  },   // 10.0.0.0/8
+  { base: '172.16.0.0', prefix: 12 },   // 172.16.0.0/12 (NOT all 172.x)
+  { base: '192.168.0.0',prefix: 16 },   // 192.168.0.0/16
 ];
 
-const BLOCKED_HOSTS = [
-  'localhost',
-  'internal',
-  'host.docker.internal'
-];
+function ipToInt(ip: string): number {
+  return ip.split('.').reduce((acc, octet) => (acc << 8) | parseInt(octet, 10), 0) >>> 0;
+}
+
+function isInCidr(ip: string, base: string, prefix: number): boolean {
+  const mask = (0xffffffff << (32 - prefix)) >>> 0;
+  return (ipToInt(ip) & mask) === (ipToInt(base) & mask);
+}
 
 export async function validateSSRF(urlString: string): Promise<void> {
   const parsedUrl = new URL(urlString);
 
-  // 1. Block forbidden hostnames directly
+  // 1. Block forbidden hostnames
   if (BLOCKED_HOSTS.includes(parsedUrl.hostname.toLowerCase())) {
     throw new Error(`SSRF blocked: Host ${parsedUrl.hostname} is forbidden.`);
   }
 
-  // 2. Resolve DNS and check resolved IPs
-  // This prevents DNS rebinding attacks where a public domain
-  // resolves to a private IP address
-  const addresses = await dns.resolve(parsedUrl.hostname);
-  
+  // 2. Resolve DNS and check each resolved IP against CIDR ranges
+  // This prevents DNS rebinding attacks AND correctly allows
+  // public CDN IPs (e.g. Cloudflare 172.67.x.x) while blocking RFC-1918.
+  const addresses = await dns.resolve(parsedUrl.hostname).catch(() => []);
+
   for (const ip of addresses) {
-    if (
-      BLOCKED_IPS.includes(ip) ||
-      ip.startsWith('10.') ||        // RFC 1918 private range
-      ip.startsWith('192.168.') ||   // RFC 1918 private range
-      ip.startsWith('172.')          // RFC 1918 private range (172.16.0.0/12)
-    ) {
+    if (BLOCKED_IPS.includes(ip)) {
       throw new Error(`SSRF blocked: IP ${ip} is forbidden.`);
+    }
+    for (const { base, prefix } of PRIVATE_CIDRS) {
+      if (isInCidr(ip, base, prefix)) {
+        throw new Error(`SSRF blocked: IP ${ip} is in a private range.`);
+      }
     }
   }
 }
@@ -294,7 +306,7 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 
 | Limitation | Risk Level | Mitigation Path |
 |-----------|-----------|----------------|
-| **172.x SSRF block** | Medium | The current check blocks all `172.x` ranges including non-RFC-1918 ranges. More precise blocking (`172.16.0.0` – `172.31.255.255`) is a future improvement. |
+| **172.x SSRF accuracy** | ✅ Fixed | SSRF now uses CIDR math (`172.16.0.0/12`) instead of string prefix. Public CDN IPs (Cloudflare `172.67.x.x`, etc.) are correctly allowed. |
 | **IPv6 SSRF** | Medium | SSRF validation only checks IPv4. IPv6 loopback (`::1`) and private ranges are not explicitly blocked. |
 | **Shared worker pool** | Low | All tenant executions share the same worker. A rate-limited tenant could affect others. |
 | **No request signing** | Low | Webhook ingestion accepts any POST to `/webhooks/:path`. HMAC signature verification is not yet implemented. |
