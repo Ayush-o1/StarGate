@@ -23,7 +23,7 @@ A full-stack, monorepo web application that lets users build and run **visual HT
 ## Table of Contents
 
 - [Problem Statement](#problem-statement)
-- [Why This Project](#why-this-project)
+- [Screenshots](#screenshots)
 - [Key Features](#key-features)
 - [Tech Stack](#tech-stack)
 - [Architecture Overview](#architecture-overview)
@@ -45,6 +45,29 @@ Connecting multiple web services together requires writing custom glue code for 
 Stargate lets you model these steps visually as a graph of nodes and edges, then executes them in the correct dependency order without you having to write the orchestration code yourself.
 
 ---
+
+## Screenshots
+
+**Workflow Builder** — Drag-and-drop ReactFlow canvas with HTTP and IF nodes, execution history, and trigger management in one view.
+
+![Workflow Canvas](docs/screenshots/workflow-editor.png)
+
+**Dashboard** — Workspace overview with live system metrics, queue health, and failure analytics.
+
+![Dashboard Overview](docs/screenshots/dashboard-metrics.png)
+
+**Execution Monitoring** — Per-node timeline showing status, duration, HTTP response body, and SSRF-blocked errors.
+
+![Execution Details — Success](docs/screenshots/execution-detail-success.png)
+![Execution Details — SSRF Blocked](docs/screenshots/execution-detail-failed.png)
+
+**Command Palette** — ⌘K global search across workflows and actions.
+
+![Command Palette](docs/screenshots/command-palette.png)
+
+**Authentication** — Split-panel login with feature highlights.
+
+![Auth Screen](docs/screenshots/auth-split-panel.png)
 
 ---
 
@@ -354,6 +377,22 @@ Web UI is at `http://localhost:5173`.
 
 ---
 
+## Troubleshooting
+
+**Postgres connection refused on port 5433** — Docker Compose maps the container's 5432 → host port 5433 to avoid conflicts with a local Postgres install. Ensure `DATABASE_URL` uses port `5433`.
+
+**Worker shows unhealthy on `/health`** — The health check looks for active BullMQ workers on the queue. If the worker hasn't started or crashed, it shows unhealthy. Check `docker compose logs worker` or restart `apps/worker`.
+
+**Cron triggers not firing** — The `node-cron` scheduler runs in-process in the API. Active `SCHEDULE` triggers are re-loaded from the database on every API startup automatically.
+
+**"Workflow validation failed" on run** — The validator checks: no cycles, all edges reference valid nodes, HTTP nodes have a URL, IF nodes have an expression, and `{{nodeId.field}}` references point to upstream nodes.
+
+**SSRF blocked error** — The worker resolves hostnames before making requests and blocks private IP ranges (RFC 1918). Set `ALLOW_LOCAL_REQUESTS=true` in `.env` to bypass this in development only.
+
+**Prisma client out of sync** — After schema changes run `cd packages/database && pnpm exec prisma generate`, then restart the dev server.
+
+---
+
 ## API Reference Summary
 
 All API routes are prefixed with `/api/v1`. Protected routes require `Authorization: Bearer <accessToken>`.
@@ -541,7 +580,7 @@ Example:
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System design, data flow, module breakdown |
 | [docs/API_REFERENCE.md](docs/API_REFERENCE.md) | Full API endpoint documentation |
 | [docs/DATABASE.md](docs/DATABASE.md) | Schema explanation, table relationships, ER overview |
-| [docs/SETUP.md](docs/SETUP.md) | Detailed setup, troubleshooting, Docker guide |
+| [docs/SETUP.md](docs/SETUP.md) | Advanced setup, database commands, extended troubleshooting |
 | [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) | Contribution guide, coding standards, PR process |
 
 ---
