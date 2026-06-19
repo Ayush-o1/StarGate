@@ -1,6 +1,6 @@
 # Database — Stargate
 
-This document explains the PostgreSQL schema, the purpose of each table, the relationships between them, and design decisions that are relevant for interviews.
+This document explains the PostgreSQL schema, the purpose of each table, the relationships between them, and the rationale behind key design decisions.
 
 All schema information comes directly from `packages/database/prisma/schema.prisma`.
 

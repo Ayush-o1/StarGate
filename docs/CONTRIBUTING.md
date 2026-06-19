@@ -220,12 +220,12 @@ The following areas are actively open for contributions:
 ### Developer Experience
 - **Execution Streaming** — Replace polling with Server-Sent Events for real-time execution updates
 - **Canvas Performance** — Optimize Zustand store subscriptions to reduce re-renders on large graphs
-- **API Documentation** — Expand `docs/api.md` with request/response examples for all endpoints
+- **API Documentation** — Expand `docs/API_REFERENCE.md` with additional request/response examples
 
 ### Documentation
 - Tutorials for common workflow patterns
 - Video walkthrough of the workflow builder
-- Additional interview talking points for engineers using this project
+
 
 ---
 

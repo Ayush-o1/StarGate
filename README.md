@@ -2,8 +2,6 @@
 
 A full-stack, monorepo web application that lets users build and run **visual HTTP-based automation workflows** using a drag-and-drop canvas. Workflows execute asynchronously via a background worker queue, support conditional branching, data passing between steps, webhook triggers, cron scheduling, and per-node execution tracking.
 
-> Built as a campus placement portfolio project to demonstrate full-stack system design skills across backend API design, queue-based job processing, database schema design, authentication, and React UI architecture.
-
 ---
 
 ## Quick Overview
@@ -37,7 +35,6 @@ A full-stack, monorepo web application that lets users build and run **visual HT
 - [How It Works — Key Flows](#how-it-works--key-flows)
 - [Known Limitations](#known-limitations)
 - [Future Scope](#future-scope)
-- [Resume Summary](#resume-summary)
 
 ---
 
@@ -48,19 +45,6 @@ Connecting multiple web services together requires writing custom glue code for 
 Stargate lets you model these steps visually as a graph of nodes and edges, then executes them in the correct dependency order without you having to write the orchestration code yourself.
 
 ---
-
-## Why This Project
-
-This project was chosen to demonstrate:
-
-- **Graph data structures** applied to a real problem (DAG-based execution ordering)
-- **Asynchronous job processing** with queues and workers
-- **RESTful API design** with proper resource modeling
-- **JWT authentication** with refresh token rotation
-- **Relational schema design** covering multi-tenancy (workspaces), state tracking (execution records), and RBAC
-- **TypeScript** across all three apps in a monorepo
-- **React architecture** with Zustand state management and ReactFlow canvas integration
-- **Security considerations** like SSRF protection and rate limiting
 
 ---
 
@@ -550,22 +534,6 @@ Example:
 
 ---
 
-## Resume Summary
-
-> **Stargate** — Full-stack Visual Workflow Automation Platform (TypeScript, Node.js, React)
-
-- Built a monorepo application (Turborepo + pnpm) with three separate services: REST API (Express), background worker (BullMQ), and React SPA (Vite)
-- Designed a PostgreSQL schema (10 tables) for multi-tenant workflow management with RBAC, execution tracking, and trigger configuration
-- Implemented a **DAG-based workflow execution engine** using topological sort (Kahn's algorithm); supports conditional branching (IF nodes), node-skipping, and inter-node variable passing via `{{nodeId.field}}` templates
-- Built JWT authentication with **refresh token rotation**: tokens stored hashed (bcrypt) in the database and rotated on each refresh
-- Integrated **BullMQ + Redis** for async job queuing with 3-attempt exponential backoff retry and a 5-minute workflow timeout
-- Implemented three trigger types: manual, webhook (unique URL path per trigger), and cron schedule (node-cron, loads on startup)
-- Added **SSRF protection**: pre-flight DNS resolution + CIDR-range checks (RFC 1918, loopback, link-local) before any outbound HTTP call
-- Built a drag-and-drop canvas using ReactFlow with node/edge configuration modals, live execution status overlay, and resizable execution history panel
-- Managed client state with **Zustand** across 5 stores; implemented transparent access token refresh inside a custom `apiFetch` wrapper
-
----
-
 ## Detailed Documentation
 
 | Doc | Contents |
@@ -574,7 +542,7 @@ Example:
 | [docs/API_REFERENCE.md](docs/API_REFERENCE.md) | Full API endpoint documentation |
 | [docs/DATABASE.md](docs/DATABASE.md) | Schema explanation, table relationships, ER overview |
 | [docs/SETUP.md](docs/SETUP.md) | Detailed setup, troubleshooting, Docker guide |
-| [docs/INTERVIEW_PREP.md](docs/INTERVIEW_PREP.md) | Interview questions + answers, trade-offs, design explanations |
+| [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) | Contribution guide, coding standards, PR process |
 
 ---
 
