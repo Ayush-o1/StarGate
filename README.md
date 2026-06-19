@@ -1,569 +1,583 @@
-<div align="center">
+# Stargate — Visual Workflow Automation Platform
 
-# ⚡ Stargate
+A full-stack, monorepo web application that lets users build and run **visual HTTP-based automation workflows** using a drag-and-drop canvas. Workflows execute asynchronously via a background worker queue, support conditional branching, data passing between steps, webhook triggers, cron scheduling, and per-node execution tracking.
 
-**A production-grade, distributed workflow orchestration platform.**
-
-Design, execute, monitor, and automate complex multi-step pipelines through an interactive visual canvas — powered by a decoupled async execution engine.
-
-[![License: MIT](https://img.shields.io/badge/License-MIT-6366f1.svg)](https://opensource.org/licenses/MIT)
-[![Node.js](https://img.shields.io/badge/Node.js-18+-6366f1)](https://nodejs.org/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.0-6366f1)](https://www.typescriptlang.org/)
-[![React](https://img.shields.io/badge/React-18-6366f1)](https://reactjs.org/)
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15-6366f1)](https://www.postgresql.org/)
-[![Redis](https://img.shields.io/badge/Redis-BullMQ-6366f1)](https://redis.io/)
-[![Docker](https://img.shields.io/badge/Docker-Compose-6366f1)](https://www.docker.com/)
-[![Turborepo](https://img.shields.io/badge/Monorepo-Turborepo-6366f1)](https://turbo.build/)
-
-*Inspired by n8n, Temporal, Apache Airflow, and Node-RED.*
-
-</div>
+> Built as a campus placement portfolio project to demonstrate full-stack system design skills across backend API design, queue-based job processing, database schema design, authentication, and React UI architecture.
 
 ---
 
-## 📖 Table of Contents
+## Quick Overview
 
-- [Problem Statement](#-problem-statement)
-- [Product Overview](#-product-overview)
-- [Key Features](#-key-features)
-- [Architecture](#-architecture)
-- [Workflow Lifecycle](#-workflow-lifecycle)
-- [System Design](#-system-design)
-- [Screenshots](#-screenshots)
-- [Local Setup](#-local-setup)
-- [Development](#-development)
-- [Folder Structure](#-folder-structure)
-- [Engineering Highlights](#-engineering-highlights)
-- [Why This Project Matters](#-why-this-project-matters)
-- [Future Roadmap](#-future-roadmap)
-- [License](#-license)
+| Area | What was built |
+|---|---|
+| **Backend** | REST API with Express + TypeScript |
+| **Worker** | Async job processor with BullMQ + Redis |
+| **Frontend** | React + Vite SPA with a drag-and-drop canvas (ReactFlow) |
+| **Database** | PostgreSQL with Prisma ORM |
+| **Auth** | JWT access + refresh token rotation |
+| **Execution** | DAG-based topological node execution with conditional branching |
+| **Triggers** | Manual, Webhook (HTTP endpoint), Schedule (cron) |
+| **Security** | SSRF protection, rate limiting, Helmet headers |
+| **Monorepo** | Turborepo + pnpm workspaces |
 
 ---
 
-## 🎯 Problem Statement
+## Table of Contents
 
-Modern automation requires executing complex sequences of interconnected tasks — each making network calls, transforming data, and passing state downstream. Building these pipelines as monolithic scripts is brittle, opaque, and impossible to monitor at scale.
-
-**Stargate solves this by providing:**
-
-- **Visual Clarity** — A drag-and-drop DAG (Directed Acyclic Graph) editor that makes data flow immediately understandable.
-- **Resilience** — A fully decoupled, queue-backed worker architecture that keeps the API responsive even during heavy execution.
-- **Observability** — Per-node execution tracking with durations, inputs, outputs, and error traces stored in a relational database.
-- **Safety** — Built-in SSRF protections, payload limits, cyclic dependency validation, and global timeout enforcement.
+- [Problem Statement](#problem-statement)
+- [Why This Project](#why-this-project)
+- [Key Features](#key-features)
+- [Tech Stack](#tech-stack)
+- [Architecture Overview](#architecture-overview)
+- [Folder Structure](#folder-structure)
+- [Environment Variables](#environment-variables)
+- [Setup and Local Development](#setup-and-local-development)
+- [Running with Docker](#running-with-docker)
+- [API Reference Summary](#api-reference-summary)
+- [How It Works — Key Flows](#how-it-works--key-flows)
+- [Known Limitations](#known-limitations)
+- [Future Scope](#future-scope)
+- [Resume Summary](#resume-summary)
 
 ---
 
-## 🧩 Product Overview
+## Problem Statement
 
-### Workspaces
-Stargate organizes everything into **Workspaces** — isolated environments where teams can collaborate. Every workspace has an owner and can contain multiple workflows. RBAC enforcement ensures users can only access their own workspace resources.
+Connecting multiple web services together requires writing custom glue code for every integration. For example: "After an HTTP API call succeeds, call another API with the response data, but only if a certain condition is true."
 
-### Workflow Builder
-The heart of Stargate is a **React Flow-powered visual canvas**. Users drag and connect nodes to define their automation logic. Node positions, edge connections, and configurations are persisted in real-time to PostgreSQL.
+Stargate lets you model these steps visually as a graph of nodes and edges, then executes them in the correct dependency order without you having to write the orchestration code yourself.
 
-### Triggers
-Workflows can be started in three ways:
-- **Manual** — A single click from the UI or a `POST` to the executions API.
-- **Webhook** — An inbound HTTP `POST` to a unique webhook URL fires the workflow with the incoming payload as context.
-- **Schedule (Cron)** — Standard cron expressions drive time-based automation (e.g., `*/5 * * * *`).
+---
+
+## Why This Project
+
+This project was chosen to demonstrate:
+
+- **Graph data structures** applied to a real problem (DAG-based execution ordering)
+- **Asynchronous job processing** with queues and workers
+- **RESTful API design** with proper resource modeling
+- **JWT authentication** with refresh token rotation
+- **Relational schema design** covering multi-tenancy (workspaces), state tracking (execution records), and RBAC
+- **TypeScript** across all three apps in a monorepo
+- **React architecture** with Zustand state management and ReactFlow canvas integration
+- **Security considerations** like SSRF protection and rate limiting
+
+---
+
+## Key Features
+
+### Visual Workflow Builder
+- Drag-and-drop canvas built with ReactFlow
+- Two node types: **HTTP Request** and **IF Condition**
+- Click edges to configure conditions
+- Node positions persist to the database on drag stop
 
 ### Execution Engine
-When a workflow is triggered, the API **enqueues a job to Redis via BullMQ** and returns `202 Accepted` immediately — never blocking. A dedicated Worker process picks up the job, traverses the DAG topologically, and executes each node in order.
+- Workflows execute as background jobs via BullMQ + Redis
+- Nodes run in topological sort order (respects dependencies)
+- IF nodes branch execution; downstream nodes on the false branch are skipped
+- Each node's input, output, error, and duration are saved to the database
+- Execution timeout: 5 minutes per workflow run
+- Automatic retry: 3 attempts with exponential backoff on failure
 
-### Conditional Logic (IF Nodes)
-`IF` nodes evaluate JavaScript-style expressions (e.g., `response.status === 200`) using an embedded `jexl` expression engine. Edges that pass the condition proceed to execution; failing branches recursively mark their children as `SKIPPED`.
+### Variable Passing Between Nodes
+- Reference a previous node's output using `{{nodeId.field}}` syntax
+- Example: URL `https://api.example.com/users/{{step1.body.userId}}`
+- Resolved using lodash `get()` at runtime
 
-### Queue System
-BullMQ provides **persistent job storage in Redis**, automatic retries with exponential backoff (up to 3 attempts), and dead-letter handling. Jobs survive API restarts — work is never lost.
+### Trigger System
+- **Manual**: Click "Run" in the UI
+- **Webhook**: Auto-generated URL path; send a POST request to trigger the workflow
+- **Schedule**: Cron expression (e.g., `*/5 * * * *`); schedules load on API startup
+
+### Authentication
+- Email + password registration with bcrypt hashing
+- JWT access token (15 min) + refresh token (7 days)
+- Refresh token stored hashed in the database; rotated on each refresh
+- Silent token refresh in the frontend API client
+
+### Workspace & RBAC
+- Users belong to workspaces as `OWNER` or `MEMBER`
+- Only `OWNER` can delete a workspace or workflow
+- All workflow/node/edge operations check workspace membership
 
 ### Observability
-Every node execution records a `startedAt`, `completedAt`, and `durationMs` in PostgreSQL. The dashboard aggregates these into workspace-level success rates, average durations, and failure counts. Executions exceeding 5,000ms are automatically flagged as `SLOW`.
+- `/api/v1/system/health` — checks API, worker, Redis, and database status
+- `/api/v1/system/metrics` — execution stats, queue depths, per-node-type breakdown, error categorization
+
+### Workflow Import / Export
+- Export any workflow to JSON (includes nodes, edges, triggers)
+- Import into any workspace; IDs are remapped so no conflicts occur
+- Done atomically inside a Prisma database transaction
+
+### Security
+- **SSRF protection**: Before making any outbound HTTP call, the worker resolves the target hostname via DNS and checks against private IP CIDR ranges (RFC 1918, loopback, link-local)
+- **Rate limiting**: Auth routes limited to 20 requests per 15-minute window
+- **Helmet**: Sets standard HTTP security headers
 
 ---
 
-## ✨ Key Features
+## Tech Stack
 
-### Visual Workflow Construction
-| Feature | Details |
-|---------|---------|
-| Drag-and-drop canvas | React Flow with infinite pan, zoom, and custom node types |
-| HTTP nodes | Real `fetch()` requests with configurable method, headers, and body |
-| IF conditional nodes | Boolean expression evaluation using `jexl` |
-| Variable interpolation | `{{nodeId.body.field}}` syntax resolves prior outputs into downstream configs |
-| Edge conditions | Per-edge expression evaluation for branching |
-| Resizable bottom panel | Drag-to-resize executions/triggers panel, height persisted to `localStorage` |
-| Canvas status bar | Floating node/edge count chip on the canvas |
-
-### Execution & Queue Architecture
-| Feature | Details |
-|---------|---------|
-| Async execution | BullMQ jobs — API never blocks on execution |
-| Topological ordering | Kahn's algorithm processes nodes in correct dependency order |
-| Retry policy | 3 automatic retries with exponential backoff |
-| Global timeout | 300,000ms (5 min) `Promise.race` enforcement per execution |
-| Node-level tracking | `QUEUED → RUNNING → SUCCESS / FAILED / SKIPPED` state machine |
-
-### Triggers & Automation
-| Feature | Details |
-|---------|---------|
-| Manual trigger | Instant UI or API-driven execution |
-| Webhook trigger | Public inbound URL, accepts any JSON payload as trigger context |
-| Cron trigger | Standard cron scheduling via in-process scheduler |
-
-### Authentication & Security
-| Feature | Details |
-|---------|---------|
-| JWT auth | Short-lived access tokens + persisted refresh tokens |
-| RBAC | Per-workspace role enforcement (`OWNER` / `MEMBER`) |
-| SSRF protection | DNS-resolved IP blocking of loopback, private RFC-1918 ranges, and cloud metadata endpoints |
-| Payload limits | 1MB Express middleware limit on all inbound JSON |
-| Cycle detection | Topological sort validation rejects cyclic graphs before execution |
-
-### Observability & Dashboard
-| Feature | Details |
-|---------|---------|
-| KPI strip | 4 live metrics — total workflows, active count, execution count, success rate |
-| Activity feed | Cross-workflow recent execution feed, grouped by Today/Yesterday/Older |
-| Execution history | Full timeline of all runs per workflow with filter pills (All/Success/Failed/Running) |
-| Execution summary | "12 total · 10 ✓ · 2 ✗" header in the executions panel |
-| Node-level traces | Input, output, error, and duration per node per execution with copy buttons |
-| System health endpoint | `/health` checks API, Worker, PostgreSQL, and Redis simultaneously |
-
-### Developer Experience
-| Feature | Details |
-|---------|---------|
-| Command palette | `⌘K` fuzzy search across workflows and actions, keyboard-navigable |
-| Import/Export | Full workflow serialization to JSON with UUID remapping on import |
-| Monorepo | Turborepo with shared `@stargate/database`, `@stargate/shared`, `@stargate/config` packages |
-| Type safety | End-to-end TypeScript with shared Zod schemas |
-| Containerized | Docker Compose brings up all 5 services in one command |
+| Layer | Technology | Why |
+|---|---|---|
+| Runtime | Node.js 18+ | LTS, native `fetch` API |
+| Language | TypeScript | Type safety across all apps |
+| API Framework | Express 4 | Minimal, well-understood |
+| Database | PostgreSQL 15 | Relational, supports JSON columns |
+| ORM | Prisma | Type-safe queries, schema-as-code |
+| Queue | BullMQ | Redis-backed job queue with retries |
+| Redis | ioredis | BullMQ connection |
+| Auth | jsonwebtoken + bcrypt | Industry standard JWT flow |
+| Validation | Zod | Runtime schema validation |
+| Scheduling | node-cron | In-process cron job scheduler |
+| Expression eval | jexl | Safe expression evaluation for IF nodes and edge conditions |
+| Frontend | React 18 + Vite | Fast SPA with HMR |
+| State | Zustand | Lightweight client state |
+| Canvas | ReactFlow | DAG visualization and interaction |
+| Styling | Tailwind CSS | Utility-first styling |
+| Monorepo | Turborepo + pnpm | Shared packages, parallel builds |
+| Containers | Docker + Docker Compose | Local dev environment |
 
 ---
 
-## 🏗 Architecture
+## Architecture Overview
 
-Stargate implements a **microservice-oriented design** ensuring the API Gateway remains non-blocking even during intensive multi-node workflow executions. The API and Worker are independent processes communicating asynchronously via a Redis-backed message queue.
-
-```mermaid
-graph TD
-    User["👤 User (Browser)"] -->|HTTPS REST| API["🌐 API Gateway\n(Express.js)"]
-
-    subgraph "Core Services"
-        API
-        Worker["⚙️ Worker Service\n(BullMQ Consumer)"]
-        Scheduler["🕐 Scheduler\n(Cron Engine)"]
-    end
-
-    subgraph "Infrastructure"
-        Redis[("🔴 Redis\n(BullMQ Queue)")]
-        DB[("🐘 PostgreSQL\n(Prisma ORM)")]
-    end
-
-    API -->|"1. Create Execution\n   (QUEUED)"| DB
-    API -->|"2. Dispatch Job"| Redis
-    Redis -->|"3. Job Consumed"| Worker
-    Worker -->|"4. Mark RUNNING"| DB
-    Worker -->|"5. Log Node Results"| DB
-    Worker -->|"6. Mark SUCCESS/FAILED"| DB
-    Scheduler -->|"Fire Cron Jobs"| API
-
-    style User fill:#6366f1,color:#fff
-    style API fill:#1e1b4b,color:#fff
-    style Worker fill:#1e1b4b,color:#fff
-    style Redis fill:#dc2626,color:#fff
-    style DB fill:#1d4ed8,color:#fff
 ```
+┌─────────────────────────────────────────────────────────────┐
+│                        Browser                              │
+│         React + Vite SPA  (apps/web)                        │
+│  Zustand stores ──► apiFetch ──► REST API                   │
+└────────────────────────┬────────────────────────────────────┘
+                         │ HTTP
+┌────────────────────────▼────────────────────────────────────┐
+│                  Express API  (apps/api)                    │
+│  Auth ─ Workspaces ─ Workflows ─ Nodes ─ Edges              │
+│  Triggers ─ Executions ─ System ─ Webhooks                  │
+│                         │                                   │
+│          Enqueues job ──►  BullMQ Queue (Redis)             │
+└────────────────────────┬────────────────────────────────────┘
+                         │
+           ┌─────────────▼──────────────┐
+           │   Worker  (apps/worker)    │
+           │  Picks up job from queue   │
+           │  Runs topological sort     │
+           │  Executes nodes in order   │
+           │  Saves results to DB       │
+           └─────────────┬──────────────┘
+                         │
+           ┌─────────────▼──────────────┐
+           │     PostgreSQL Database    │
+           │   (packages/database)      │
+           └────────────────────────────┘
+```
+
+**Three separate processes** talk to one shared database and one Redis instance:
+
+1. **API** — handles all HTTP requests, validates input, writes execution records, enqueues jobs
+2. **Worker** — reads jobs from Redis queue, performs the actual node execution, updates execution status
+3. **Web** — React SPA, talks only to the API
 
 ---
 
-## 🔄 Workflow Lifecycle
-
-The complete lifecycle of a single workflow execution, from trigger to final state:
-
-```mermaid
-stateDiagram-v2
-    direction LR
-    [*] --> QUEUED : Trigger Fired
-    QUEUED --> RUNNING : Worker Picks Up Job
-    
-    state RUNNING {
-        direction TB
-        [*] --> EvalNode : Topological Sort
-        EvalNode --> ExecHTTP : HTTP Node
-        EvalNode --> EvalIF : IF Node
-        ExecHTTP --> WriteOutput : Success
-        EvalIF --> BranchTrue : TRUE branch
-        EvalIF --> BranchFalse : FALSE branch → SKIPPED
-        WriteOutput --> NextNode : Resolve Variables
-        BranchTrue --> NextNode
-        NextNode --> EvalNode : More nodes
-        NextNode --> [*] : Graph complete
-    }
-
-    RUNNING --> SUCCESS : All nodes resolved
-    RUNNING --> FAILED : Node error / Timeout
-    SUCCESS --> [*]
-    FAILED --> [*]
-```
-
-### Execution States
-| State | Description |
-|-------|-------------|
-| `QUEUED` | Job dispatched to Redis, waiting for worker pickup |
-| `PENDING` | Node initialized, not yet started |
-| `RUNNING` | Node or workflow actively executing |
-| `SUCCESS` | Node/workflow completed without errors |
-| `FAILED` | Execution error encountered — error message persisted |
-| `SKIPPED` | Node bypassed due to failing conditional branch |
-
----
-
-## 🧠 System Design
-
-### Why Async Queue Architecture?
-The core design insight: **workflow execution is unpredictable**. A single workflow might make 10 sequential HTTP calls, each taking 1-2 seconds. Running these synchronously on the API thread would tie up connections, create timeout cascades, and bottleneck the entire system under load.
-
-By dispatching work to BullMQ, the API responds with `202 Accepted` in milliseconds. The Worker processes at its own pace. The API thread remains free to handle dashboard refreshes, new triggers, and other REST operations.
-
-### Variable Resolution Engine
-The Worker maintains an `ExecutionContext` — a `Map<nodeId, nodeOutput>` that grows as nodes complete. Before executing any node, the `VariableResolver` scans the node's configuration (URL, headers, body) and replaces `{{nodeId.body.field}}` tokens by traversing the execution context using `lodash.get`.
-
-```
-"https://api.example.com/users/{{nodeA.body.userId}}"
-                                    ↓  (resolved from nodeA's output)
-"https://api.example.com/users/42"
-```
-
-### Conditional Branching (DAG Routing)
-After each node completes, outgoing edges are evaluated. If an edge has a `condition` expression (e.g., `response.status === 200`), it's evaluated by `jexl` against the current execution context. Edges that fail are set to `false`; their target nodes — and all descendants exclusively downstream of them — are marked `SKIPPED` without executing.
-
-### SSRF Protection
-The worker validates every HTTP node URL before executing. It resolves DNS and blocks:
-- Known loopback addresses (`127.0.0.1`, `0.0.0.0`, `::1`)
-- Cloud metadata endpoint (`169.254.169.254`)
-- Internal hostnames (`localhost`, `host.docker.internal`)
-- Private IP ranges via CIDR check: `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`
-
-Public CDN and cloud IPs (Cloudflare, AWS CloudFront, etc.) are correctly **allowed** — only RFC-1918 private ranges are blocked.
-
-### Database Schema Overview
-
-```mermaid
-erDiagram
-    User ||--o{ WorkspaceMember : "member of"
-    User ||--o{ Workspace : "creates"
-    User ||--o{ Workflow : "creates"
-    User ||--o{ WorkflowExecution : "triggers"
-    
-    Workspace ||--o{ WorkspaceMember : "has members"
-    Workspace ||--o{ Workflow : "contains"
-    
-    Workflow ||--o{ Node : "has"
-    Workflow ||--o{ Edge : "has"
-    Workflow ||--o{ WorkflowExecution : "has"
-    Workflow ||--o{ WorkflowTrigger : "has"
-    
-    WorkflowExecution ||--o{ NodeExecution : "logs"
-    WorkflowTrigger ||--o{ TriggerExecution : "records"
-    
-    Node ||--o{ Edge : "source of"
-    Node ||--o{ Edge : "target of"
-    Node ||--o{ NodeExecution : "executed as"
-```
-
----
-
-## 📸 Screenshots
-
-<div align="center">
-
-### Authentication — Split Panel Design
-
-<img src="docs/screenshots/auth-split-panel.png" alt="Stargate Login" width="85%" />
-
-*Split-panel auth: feature highlights on the left, glassmorphism form on the right*
-
----
-
-### Dashboard — KPI Strip + Workflow List + Activity Feed
-
-<img src="docs/screenshots/dashboard-overview.png" alt="Stargate Dashboard" width="85%" />
-
-*4 live KPI metrics with sparkline trends, workflow list with run-history dots, cross-workflow activity feed*
-
----
-
-### Workflow Editor — Visual DAG Canvas
-
-<img src="docs/screenshots/workflow-editor.png" alt="Workflow Editor" width="85%" />
-
-*React Flow canvas with breadcrumb nav, resizable bottom panel, execution filter pills, canvas status bar, and trigger management*
-
----
-
-### Command Palette — ⌘K Navigation
-
-<img src="docs/screenshots/command-palette.png" alt="Command Palette" width="85%" />
-
-*Fuzzy search across workflows and actions, full keyboard navigation with ↑↓ Enter Esc*
-
----
-
-### Execution Detail — Success with Node Timeline
-
-<img src="docs/screenshots/execution-detail-success.png" alt="Execution Detail Success" width="85%" />
-
-*Per-node step timeline with expandable response bodies and copy buttons*
-
----
-
-### Execution Detail — Failure with SSRF Protection
-
-<img src="docs/screenshots/execution-detail-failed.png" alt="Execution Detail Failed" width="85%" />
-
-*Failed execution showing SSRF protection blocking private IP access, with SKIPPED downstream nodes*
-
-</div>
-
----
-
-## 🚀 Local Setup
-
-### Prerequisites
-
-| Requirement | Version |
-|-------------|---------|
-| [Docker & Docker Compose](https://www.docker.com/) | Latest |
-| [Node.js](https://nodejs.org/) | 18+ |
-| [pnpm](https://pnpm.io/) | 9.0.0+ |
-
-### Installation
-
-**1. Clone the repository:**
-```bash
-git clone https://github.com/Ayush-o1/StarGate.git
-cd StarGate
-```
-
-**2. Install dependencies:**
-```bash
-pnpm install
-```
-
-**3. Configure environment variables:**
-```bash
-cp .env.example .env
-```
-
-Edit `.env` and set your values:
-```env
-PORT=3000
-DATABASE_URL="postgresql://stargate:password@localhost:5433/stargate_dev?schema=public"
-REDIS_HOST=localhost
-REDIS_PORT=6379
-JWT_ACCESS_SECRET="your-secure-secret-here"
-JWT_REFRESH_SECRET="your-secure-secret-here"
-VITE_API_URL=http://localhost:3000
-```
-
-**4. Start all services:**
-```bash
-docker compose up -d --build
-```
-
-This starts: **PostgreSQL** (port 5433), **Redis** (port 6379), **API Gateway** (port 3000), **Worker**, and **Web UI** (port 5173).
-
-**5. Access Stargate:**
-
-| Service | URL |
-|---------|-----|
-| Frontend UI | http://localhost:5173 |
-| API Gateway | http://localhost:3000/api/v1 |
-| Health Check | http://localhost:3000/health |
-
-### Verify Setup
-```bash
-curl http://localhost:3000/health
-# Expected: {"api":"healthy","worker":"healthy","redis":"healthy","database":"healthy"}
-```
-
----
-
-## 🛠 Development
-
-### Running Services Locally (without Docker)
-
-```bash
-# Start infrastructure only
-docker compose up postgres redis -d
-
-# In separate terminals:
-pnpm --filter @stargate/api dev       # API Gateway on :3000
-pnpm --filter @stargate/worker dev    # Worker (BullMQ consumer)
-pnpm --filter @stargate/web dev       # Vite dev server on :5173
-```
-
-### Common Commands
-
-```bash
-# Build all packages
-pnpm build
-
-# Run type checking across monorepo
-pnpm typecheck
-
-# Lint all packages
-pnpm lint
-
-# Format all files
-pnpm format
-
-# Database migrations (from packages/database)
-pnpm --filter @stargate/database prisma migrate dev
-pnpm --filter @stargate/database prisma studio
-```
-
-### Troubleshooting
-
-| Issue | Solution |
-|-------|----------|
-| `ECONNREFUSED` on API startup | Ensure PostgreSQL and Redis containers are healthy: `docker compose ps` |
-| Worker not processing jobs | Check Worker logs: `docker compose logs worker -f` |
-| Database migration errors | Reset: `docker compose down -v && docker compose up -d --build` |
-| Prisma client not found | Run `pnpm --filter @stargate/database prisma generate` |
-
----
-
-## 📁 Folder Structure
+## Folder Structure
 
 ```
 stargate/
 ├── apps/
-│   ├── api/                    # Express.js API Gateway
+│   ├── api/                    # Express REST API
 │   │   └── src/
-│   │       ├── controllers/    # Request handlers (auth, workflows, nodes, edges, workspaces)
-│   │       ├── middleware/     # Auth guard, error handler
-│   │       ├── modules/        # Feature modules (executions, triggers, system)
-│   │       └── routes/         # Express router definitions
+│   │       ├── index.ts        # Entry point, mounts all routers, starts scheduler
+│   │       ├── controllers/    # Route handler functions
+│   │       │   ├── auth.controller.ts
+│   │       │   ├── workspaces.controller.ts
+│   │       │   ├── workflows.controller.ts
+│   │       │   ├── nodes.controller.ts
+│   │       │   ├── edges.controller.ts
+│   │       │   └── users.controller.ts
+│   │       ├── routes/         # Router definitions (wires URLs → controllers)
+│   │       ├── middleware/
+│   │       │   ├── auth.ts         # JWT verification middleware
+│   │       │   ├── rateLimiter.ts  # express-rate-limit setup
+│   │       │   └── errorHandler.ts # Global error handler
+│   │       ├── lib/
+│   │       │   └── queue.ts        # BullMQ Queue instance + Redis connection
+│   │       └── modules/
+│   │           ├── executions/     # Run workflow, list executions, node details
+│   │           ├── triggers/       # Webhook routes, cron scheduler, trigger CRUD
+│   │           ├── workflows/      # Workflow validator (DAG + config checks)
+│   │           └── system/         # Health check + metrics endpoints
 │   │
-│   ├── web/                    # React 18 + Vite Frontend
+│   ├── worker/                 # BullMQ background worker
 │   │   └── src/
-│   │       ├── components/     # Reusable UI component library
-│   │       │   ├── ui/         # Base: Button, Badge, Modal, Toast, Tooltip, etc.
-│   │       │   ├── CommandPalette.tsx   # ⌘K fuzzy search palette
-│   │       │   ├── KpiStrip.tsx         # Dashboard metrics strip
-│   │       │   ├── ActivityFeed.tsx     # Cross-workflow execution feed
-│   │       │   ├── CustomNode.tsx       # ReactFlow custom node with status glow
-│   │       │   ├── ResizablePanel.tsx   # Drag-to-resize bottom panel
-│   │       │   └── CanvasStatusBar.tsx  # Node/edge count overlay
-│   │       ├── pages/          # Dashboard, WorkflowDetail, Login, Register
-│   │       ├── store/          # Zustand global state stores
-│   │       └── lib/            # API client, utilities
+│   │       ├── index.ts            # Entry point
+│   │       ├── worker.ts           # BullMQ Worker setup, job lifecycle
+│   │       ├── execution.processor.ts  # Core: topological sort + node runner
+│   │       └── utils/
+│   │           ├── resolver.ts     # {{variable}} template resolver
+│   │           └── ssrf.ts         # SSRF IP/CIDR block guard
 │   │
-│   └── worker/                 # BullMQ Worker Service
+│   └── web/                    # React frontend
 │       └── src/
-│           ├── worker.ts               # BullMQ worker initialization & job lifecycle
-│           ├── execution.processor.ts  # DAG traversal & node execution engine
-│           └── utils/
-│               ├── resolver.ts         # Variable interpolation engine
-│               └── ssrf.ts             # SSRF protection validator (CIDR-based)
+│           ├── main.tsx            # React entry point
+│           ├── App.tsx             # Router + command palette + toaster
+│           ├── pages/
+│           │   ├── Login.tsx
+│           │   ├── Register.tsx
+│           │   ├── Dashboard.tsx   # Workspace + workflow list
+│           │   └── WorkflowDetail.tsx  # Canvas + executions + triggers panel
+│           ├── components/         # Reusable UI components
+│           ├── store/              # Zustand stores (auth, workspace, workflow, etc.)
+│           └── lib/
+│               └── api.ts          # Fetch wrapper with JWT + auto-refresh
 │
 ├── packages/
-│   ├── database/               # Prisma ORM & PostgreSQL schema
+│   ├── database/               # Shared Prisma client + schema
 │   │   └── prisma/
-│   │       └── schema.prisma   # 9 models, 3 enums, full relational schema
-│   ├── shared/                 # Shared TypeScript types & Zod schemas
-│   └── config/                 # Shared ESLint & TypeScript configurations
+│   │       └── schema.prisma   # Single source of truth for the DB schema
+│   ├── shared/                 # Shared TypeScript types + Zod schemas
+│   │   └── src/index.ts        # DTOs, response interfaces, payload types
+│   └── config/                 # Shared ESLint + tsconfig
 │
-├── docs/                       # Technical documentation
-│   ├── architecture.md         # Deep-dive system architecture
-│   ├── SYSTEM_DESIGN.md        # Design decisions & trade-offs
-│   ├── EXECUTION_ENGINE.md     # Worker & DAG execution internals
-│   ├── OBSERVABILITY.md        # Metrics, health checks, monitoring
-│   ├── SECURITY.md             # Auth, SSRF, RBAC, hardening
-│   ├── FRONTEND.md             # React architecture & state management
-│   ├── CONTRIBUTING.md         # Contribution guidelines
-│   ├── RESUME_BULLETS.md       # Resume-ready impact statements
-│   └── screenshots/            # Application screenshots
-│
-├── docker-compose.yml          # 5-service container orchestration
-├── turbo.json                  # Turborepo pipeline configuration
-└── pnpm-workspace.yaml         # Monorepo workspace definition
+├── docker-compose.yml          # Local dev: postgres, redis, api, worker, web
+├── .env.example                # Environment variable template
+├── turbo.json                  # Turborepo pipeline config
+└── pnpm-workspace.yaml         # Workspace package list
 ```
 
 ---
 
-## 🔬 Engineering Highlights
+## Environment Variables
 
-### 1. Decoupled Async Execution Architecture
-The API Gateway and Worker are completely independent processes. The API's only responsibility when a workflow is triggered is to validate the graph, create a `WorkflowExecution` record, and enqueue a lightweight job payload (`workflowId`, `executionId`) to Redis. The Worker does all the heavy lifting. This separation means zero execution-related latency bleeds into the API's response times.
+Copy `.env.example` to `.env` before starting:
 
-### 2. Topological Sort for Correct Execution Order
-The Worker implements **Kahn's Algorithm** (BFS-based topological sort) to determine the correct node execution sequence. This handles complex diamond-shaped DAGs where multiple nodes must complete before a downstream node can begin, and correctly detects any cycles that pass API validation.
+```env
+# API
+PORT=3000
+NODE_ENV=development
 
-### 3. Recursive DAG Branch Pruning
-When a conditional branch fails, the Worker doesn't just skip the next node — it recursively marks all descendants of that branch as `SKIPPED`. This prevents orphaned nodes from accidentally executing when their required upstream context is missing.
+# PostgreSQL
+DATABASE_URL="postgresql://stargate:password@localhost:5433/stargate_dev?schema=public"
 
-### 4. DNS-Resolved SSRF Protection with CIDR Checking
-The SSRF validator resolves DNS to get the actual IP, then performs **CIDR range checking** against RFC-1918 private address space (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`) plus loopback. This correctly allows public CDN IPs (Cloudflare, etc.) while still blocking internal infrastructure access — even if a user constructs a URL with a custom domain that resolves to a private IP.
+# Frontend base URL (used by Vite)
+VITE_API_URL=http://localhost:3000
 
-### 5. Atomic Workspace Creation (Prisma Transactions)
-When a user creates a workspace, the API uses a **Prisma `$transaction`** to atomically create both the `Workspace` record and the `WorkspaceMember` record (with `OWNER` role). If either operation fails, both roll back — preventing orphaned workspaces with no owner.
+# JWT secrets (use long random strings in production)
+JWT_ACCESS_SECRET="your-secret-here"
+JWT_REFRESH_SECRET="your-other-secret-here"
 
-### 6. Full Workflow Graph Portability
-The Import/Export system performs **deep-copy serialization** with UUID remapping. Each imported node and edge gets a freshly generated UUID while maintaining internal topology references via an in-memory `Map<oldId, newId>`. Workflows can be shared across environments without ID conflicts.
+# Redis (defaults work for docker-compose)
+REDIS_HOST=localhost
+REDIS_PORT=6379
 
-### 7. Premium UI Engineering
-The frontend was built to production-grade standards with: a command palette (`⌘K`) with fuzzy search and keyboard navigation, drag-to-resize panels with `localStorage` persistence, animated node execution states, per-node execution timeline with expandable response bodies, run-history sparklines and dot indicators, and a split-panel auth layout.
+# Worker SSRF bypass (development only, never production)
+ALLOW_LOCAL_REQUESTS=false
+```
 
----
-
-## 🎯 Why This Project Matters
-
-> *For recruiters and hiring managers unfamiliar with workflow orchestration platforms.*
-
-### What Is Workflow Orchestration?
-Imagine you need to run this every day at 9 AM: "Call the Stripe API → extract all new customers → for each customer, call your internal CRM to create a contact → if the CRM returns 201, send a Slack notification." 
-
-Doing this manually is tedious. Hardcoding it into a script is brittle and impossible to monitor. **Workflow orchestration** is the engineering discipline of building systems that define, execute, and track these multi-step automated pipelines reliably.
-
-### Why This Is Technically Challenging
-
-| Challenge | Stargate's Solution |
-|-----------|---------------------|
-| **Distributed systems** — How do you execute work without blocking the main server? | Asynchronous queue architecture (BullMQ + Redis) decouples ingestion from execution |
-| **Graph algorithms** — How do you determine execution order with dependencies? | Kahn's topological sort algorithm traverses the DAG correctly |
-| **State management** — How do you pass data between steps? | A live `ExecutionContext` map with a templating resolver (`{{node.body.id}}`) |
-| **Conditional logic** — How do you branch based on results? | `jexl` expression engine evaluates conditions; failing branches are recursively pruned |
-| **Security** — What stops users from scanning internal infrastructure? | DNS-resolved SSRF blocking with CIDR range validation prevents weaponizing the worker |
-| **Reliability** — What happens if the server crashes mid-execution? | BullMQ persists jobs in Redis — unfinished work is retried on restart |
-| **Observability** — How do you know what went wrong? | Every node execution writes start time, end time, input, output, and errors to PostgreSQL |
-
-This project demonstrates proficiency in **distributed systems design**, **graph algorithms**, **queue-based architectures**, **REST API design**, **relational database modeling**, **security hardening**, and **full-stack TypeScript development** — all applied to a real, working product.
+| Variable | Used by | Purpose |
+|---|---|---|
+| `DATABASE_URL` | API, Worker | Prisma database connection |
+| `JWT_ACCESS_SECRET` | API | Signs 15-minute access tokens |
+| `JWT_REFRESH_SECRET` | API | Signs 7-day refresh tokens |
+| `REDIS_HOST` / `REDIS_PORT` | API, Worker | BullMQ queue connection |
+| `VITE_API_URL` | Web | Points frontend to the API |
+| `ALLOW_LOCAL_REQUESTS` | Worker | Disables SSRF guard for local testing |
 
 ---
 
-## 🛣 Future Roadmap
+## Setup and Local Development
 
-| Feature | Description |
-|---------|-------------|
-| **Per-tenant Worker Queues** | Isolate execution pools per workspace to prevent noisy-neighbor interference |
-| **Plugin Node Architecture** | Dynamic `integrations/` folder allowing community-contributed node types without touching core worker logic |
-| **Workflow Versioning** | Immutable graph snapshots preventing destructive edits to in-flight workflows |
-| **Role Differentiation** | Viewer, Editor, and Admin permission tiers within workspaces |
-| **Native OAuth Integrations** | Pre-built nodes for Slack, Stripe, GitHub, and Jira using OAuth2 |
-| **Retry Policies (Node-Level)** | Configurable exponential backoff per node type, not just per workflow |
-| **WebSocket Live Updates** | Replace polling with Redis Pub/Sub → WebSocket for real-time execution status |
+### Prerequisites
+
+- Node.js 18+
+- pnpm 9+ (`npm install -g pnpm`)
+- Docker and Docker Compose
+
+### Step 1 — Install dependencies
+
+```bash
+pnpm install
+```
+
+### Step 2 — Start infrastructure (Postgres + Redis)
+
+```bash
+docker compose up postgres redis -d
+```
+
+### Step 3 — Set up environment
+
+```bash
+cp .env.example .env
+# Edit .env if needed (defaults work for local docker-compose)
+```
+
+### Step 4 — Run database migrations
+
+```bash
+cd packages/database
+pnpm exec prisma migrate dev
+```
+
+### Step 5 — Start all apps in development mode
+
+```bash
+# From repo root — Turborepo starts api, worker, and web in parallel
+pnpm dev
+```
+
+Individual apps:
+```bash
+# API only
+cd apps/api && pnpm dev
+
+# Worker only
+cd apps/worker && pnpm dev
+
+# Web only
+cd apps/web && pnpm dev
+```
+
+**Default ports:**
+- API: `http://localhost:3000`
+- Web: `http://localhost:5173`
+- Postgres: `localhost:5433`
+- Redis: `localhost:6379`
 
 ---
 
-## 📄 License
+## Running with Docker
 
-This project is licensed under the [MIT License](LICENSE).
+Runs all five services (postgres, redis, api, worker, web) together:
+
+```bash
+# Build and start everything
+docker compose up --build
+
+# Verify all containers are up
+docker compose ps
+
+# Check the health endpoint
+curl http://localhost:3000/health
+```
+
+Expected healthy response:
+```json
+{"api":"healthy","worker":"healthy","redis":"healthy","database":"healthy"}
+```
+
+Web UI is at `http://localhost:5173`.
 
 ---
 
-<div align="center">
-  <sub>Built with TypeScript, React, Node.js, PostgreSQL, Redis, and BullMQ.</sub><br/>
-  <sub>Designed for precision, resilience, and observability.</sub>
-</div>
+## API Reference Summary
+
+All API routes are prefixed with `/api/v1`. Protected routes require `Authorization: Bearer <accessToken>`.
+
+### Authentication
+
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| POST | `/auth/register` | No | Create account, returns tokens |
+| POST | `/auth/login` | No | Login, returns tokens |
+| POST | `/auth/refresh` | No | Exchange refresh token for new tokens |
+| POST | `/auth/logout` | No | Revoke refresh token |
+
+### Workspaces
+
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| GET | `/workspaces` | Yes | List workspaces for current user |
+| POST | `/workspaces` | Yes | Create workspace (creator becomes OWNER) |
+| GET | `/workspaces/:id` | Yes | Get single workspace |
+| PUT | `/workspaces/:id` | Yes (OWNER) | Update workspace |
+| DELETE | `/workspaces/:id` | Yes (OWNER) | Delete workspace |
+
+### Workflows
+
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| GET | `/workflows/workspace/:workspaceId` | Yes | List workflows in workspace |
+| POST | `/workflows/workspace/:workspaceId` | Yes | Create workflow |
+| GET | `/workflows/:id` | Yes | Get workflow with nodes and edges |
+| PUT | `/workflows/:id` | Yes | Update workflow (name, status, isActive) |
+| DELETE | `/workflows/:id` | Yes (OWNER) | Delete workflow |
+| GET | `/workflows/:id/graph` | Yes | Get nodes and edges separately |
+| GET | `/workflows/:id/export` | Yes | Export full workflow as JSON |
+| POST | `/workflows/workspace/:workspaceId/import` | Yes | Import workflow JSON |
+
+### Nodes
+
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| POST | `/nodes/workflow/:workflowId` | Yes | Create node |
+| GET | `/nodes/workflow/:workflowId` | Yes | List nodes |
+| PUT | `/nodes/:id` | Yes | Update node config |
+| PUT | `/nodes/:id/position` | Yes | Update node position (drag) |
+| DELETE | `/nodes/:id` | Yes | Delete node |
+
+### Edges
+
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| POST | `/edges/workflow/:workflowId` | Yes | Create edge (connect two nodes) |
+| GET | `/edges/workflow/:workflowId` | Yes | List edges |
+| PATCH | `/edges/:id` | Yes | Update edge condition |
+| DELETE | `/edges/:id` | Yes | Delete edge |
+
+### Executions
+
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| POST | `/workflows/:id/run` | Yes | Manually trigger execution |
+| GET | `/workflows/:id/executions` | Yes | List executions for workflow |
+| GET | `/executions/:id` | Yes | Get execution details |
+| GET | `/executions/:id/nodes` | Yes | Get per-node execution results |
+
+### Triggers
+
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| POST | `/workflows/:workflowId/triggers` | Yes | Create trigger (MANUAL/WEBHOOK/SCHEDULE) |
+| GET | `/workflows/:workflowId/triggers` | Yes | List triggers |
+| DELETE | `/triggers/:id` | Yes | Delete trigger |
+| POST | `/triggers/:id/enable` | Yes | Enable trigger |
+| POST | `/triggers/:id/disable` | Yes | Disable trigger |
+| POST | `/webhooks/:token` | No | Public webhook endpoint (fires a workflow) |
+
+### System
+
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| GET | `/health` | No | Service health check |
+| GET | `/api/v1/system/health` | No | Same, from system module |
+| GET | `/api/v1/system/metrics` | No | Execution stats + queue metrics |
+
+---
+
+## How It Works — Key Flows
+
+### 1. Workflow Execution Flow
+
+```
+User clicks "Run"
+  → POST /api/v1/workflows/:id/run
+  → API validates workflow (cycle check, node config, expression syntax)
+  → API creates WorkflowExecution record (status: QUEUED)
+  → API enqueues job to BullMQ (Redis queue named "workflow-execution")
+  → Worker picks up job
+  → Worker sets status: RUNNING
+  → Worker fetches nodes + edges from DB
+  → Worker runs topological sort (Kahn's algorithm)
+  → For each node in order:
+      - Create NodeExecution (PENDING)
+      - Check if any incoming edge passed (edge condition evaluation)
+      - If no incoming edges pass → mark SKIPPED
+      - If should execute → run node
+      - Update NodeExecution (SUCCESS / FAILED)
+      - Evaluate outgoing edge conditions
+  → Update WorkflowExecution (SUCCESS / FAILED)
+```
+
+### 2. Authentication Flow
+
+```
+Register / Login
+  → Password hashed with bcrypt (salt rounds: 10)
+  → Access token signed (15 min expiry)
+  → Refresh token signed (7 day expiry)
+  → Refresh token stored hashed in DB (RefreshToken table)
+  → Both tokens returned to client
+
+Token Refresh (automatic in frontend)
+  → apiFetch gets 401/403
+  → Reads refreshToken from localStorage
+  → POST /auth/refresh with refreshToken
+  → API verifies JWT signature
+  → API bcrypt-compares token against stored hashes
+  → Old token revoked, new tokens issued (rotation)
+  → Original request retried with new access token
+
+Logout
+  → POST /auth/logout with refreshToken
+  → Token found and marked revoked: true in DB
+```
+
+### 3. Webhook Trigger Flow
+
+```
+External system POSTs to /api/v1/webhooks/:token
+  → API looks up WorkflowTrigger by webhookPath = token
+  → Checks trigger.enabled and workflow.isActive
+  → Creates TriggerExecution record
+  → Calls executeWorkflow() → enqueues job
+  → Returns { success: true }
+```
+
+### 4. Variable Resolution
+
+Each node's output is stored in an `executionContext` map keyed by `nodeId`. When a downstream node runs, its config is processed through `VariableResolver.resolveObject()` which replaces `{{nodeId.path.to.value}}` using lodash `get()`.
+
+Example:
+- Node A (`abc123`) fetches `https://api.com/user/1` and gets `{ body: { id: 42 } }`
+- Node B config URL: `https://api.com/posts/{{abc123.body.id}}`
+- Resolved at runtime to: `https://api.com/posts/42`
+
+---
+
+## Known Limitations
+
+- **No real-time push**: The frontend polls executions every 3 seconds. There is no WebSocket or SSE connection.
+- **Single-instance scheduler**: The `node-cron` scheduler runs in-process inside the API. If multiple API instances run, the cron would fire multiple times. This is a known limitation for a development-scale project.
+- **No authentication on webhook payloads**: The webhook URL token is a secret path, not a cryptographic signature. Webhook payload content is not validated.
+- **Variable references are string-only**: `{{node.field}}` resolves to a string. Complex nested object injection into JSON bodies relies on the node config being set up correctly.
+- **No pagination**: Execution and workflow list endpoints return all records.
+- **SSRF guard fails open on DNS error**: If DNS resolution fails, the request is allowed through rather than blocked. This is intentional to avoid breaking legitimate requests on transient DNS failures.
+- **No user-level isolation beyond workspace membership**: Any workspace member can run, view, or modify all workflows in that workspace regardless of who created them.
+
+---
+
+## Future Scope
+
+- WebSocket / SSE for live execution status updates (replace polling)
+- More node types: email (SMTP), database query, delay/wait, webhook outbound
+- Workflow versioning: save a snapshot before each edit
+- Pagination on all list endpoints
+- Persistent cron scheduler (store cron state in Redis or DB instead of in-process)
+- Role granularity: `VIEWER`, `EDITOR`, `ADMIN` roles beyond `OWNER`/`MEMBER`
+- Workflow templates: pre-built starting points
+- Audit log: track who ran what and when
+
+---
+
+## Resume Summary
+
+> **Stargate** — Full-stack Visual Workflow Automation Platform (TypeScript, Node.js, React)
+
+- Built a monorepo application (Turborepo + pnpm) with three separate services: REST API (Express), background worker (BullMQ), and React SPA (Vite)
+- Designed a PostgreSQL schema (10 tables) for multi-tenant workflow management with RBAC, execution tracking, and trigger configuration
+- Implemented a **DAG-based workflow execution engine** using topological sort (Kahn's algorithm); supports conditional branching (IF nodes), node-skipping, and inter-node variable passing via `{{nodeId.field}}` templates
+- Built JWT authentication with **refresh token rotation**: tokens stored hashed (bcrypt) in the database and rotated on each refresh
+- Integrated **BullMQ + Redis** for async job queuing with 3-attempt exponential backoff retry and a 5-minute workflow timeout
+- Implemented three trigger types: manual, webhook (unique URL path per trigger), and cron schedule (node-cron, loads on startup)
+- Added **SSRF protection**: pre-flight DNS resolution + CIDR-range checks (RFC 1918, loopback, link-local) before any outbound HTTP call
+- Built a drag-and-drop canvas using ReactFlow with node/edge configuration modals, live execution status overlay, and resizable execution history panel
+- Managed client state with **Zustand** across 5 stores; implemented transparent access token refresh inside a custom `apiFetch` wrapper
+
+---
+
+## Detailed Documentation
+
+| Doc | Contents |
+|---|---|
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System design, data flow, module breakdown |
+| [docs/API_REFERENCE.md](docs/API_REFERENCE.md) | Full API endpoint documentation |
+| [docs/DATABASE.md](docs/DATABASE.md) | Schema explanation, table relationships, ER overview |
+| [docs/SETUP.md](docs/SETUP.md) | Detailed setup, troubleshooting, Docker guide |
+| [docs/INTERVIEW_PREP.md](docs/INTERVIEW_PREP.md) | Interview questions + answers, trade-offs, design explanations |
+
+---
+
+## License
+
+MIT — see [LICENSE](LICENSE).
