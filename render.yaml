@@ -1,0 +1,37 @@
+services:
+  - type: web
+    name: stargate-api
+    env: docker
+    region: ohio # Adjust if needed
+    dockerfilePath: ./apps/api/Dockerfile
+    dockerContext: .
+    plan: starter # Starter plan recommended for Docker builds
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        sync: false # You will provide this in the Render Dashboard
+      - key: REDIS_URL
+        sync: false
+      - key: NODE_ENV
+        value: production
+
+  - type: worker
+    name: stargate-worker
+    env: docker
+    region: ohio
+    dockerfilePath: ./apps/worker/Dockerfile
+    dockerContext: .
+    plan: starter
+    envVars:
+      - key: DATABASE_URL
+        fromService:
+          type: web
+          name: stargate-api
+          envVarKey: DATABASE_URL
+      - key: REDIS_URL
+        fromService:
+          type: web
+          name: stargate-api
+          envVarKey: REDIS_URL
+      - key: NODE_ENV
+        value: production
