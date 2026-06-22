@@ -4,14 +4,17 @@ import { prisma } from '@stargate/database';
 import { ExecuteWorkflowPayload } from '@stargate/shared';
 import { runWorkflowNodes } from './execution.processor';
 
+const REDIS_URL = process.env.REDIS_URL;
 const REDIS_HOST = process.env.REDIS_HOST || 'localhost';
 const REDIS_PORT = parseInt(process.env.REDIS_PORT || '6379', 10);
 
-const redisConnection = new Redis({
-  host: REDIS_HOST,
-  port: REDIS_PORT,
-  maxRetriesPerRequest: null,
-});
+const redisConnection = REDIS_URL
+  ? new Redis(REDIS_URL, { maxRetriesPerRequest: null })
+  : new Redis({
+      host: REDIS_HOST,
+      port: REDIS_PORT,
+      maxRetriesPerRequest: null,
+    });
 
 export const initWorker = () => {
   console.log(`[Worker] Connecting to Redis at ${REDIS_HOST}:${REDIS_PORT}`);
